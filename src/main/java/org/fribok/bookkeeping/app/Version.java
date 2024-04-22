@@ -20,7 +20,7 @@ public final class Version {
 	return ResourceBundle.getBundle("version").getString("version") + "-$Rev$";
     }
 
-    public final static boolean CAN_DELETE_VOUCHERS = false;
+    public final static boolean CAN_DELETE_VOUCHERS = true;
 
     private Version() {} // prevents instantiation
 }
