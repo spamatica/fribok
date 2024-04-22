@@ -161,11 +161,17 @@ public class SSVoucherFrame extends SSDefaultTableFrame {
         if (Version.CAN_DELETE_VOUCHERS) {
             // Ta bort verifikation
             // ***************************
+
             iButton = new SSButton("ICON_DELETEITEM", "voucherframe.deletebutton",
                     new ActionListener() {
                 public void actionPerformed(ActionEvent e) {
                     int[] selected = iTable.getSelectedRows();
                     List<SSVoucher> toDelete = iModel.getObjects(selected);
+
+                    if (selected.length !=1) {
+                        new SSErrorDialog(getMainFrame(), "voucherframe.voucherdeletetoomany");
+                        return;
+                    }
 
                     deleteSelectedVouchers(toDelete);
                 }
