@@ -15,7 +15,8 @@ There is no authentication yet: keep it listening on localhost.
 - `internal/ledger` SQLite schema and migrations, SIE import/export, chart
   templates, trial balance, posting, correcting and locking vouchers
 - `internal/report` income statement and balance sheet (BAS number ranges)
-- `internal/web`    server-rendered pages (html/template)
+- `internal/web`    server-rendered pages (html/template), `static/` holds the
+  stylesheet (light, dark and print) and the form scripts
 
 ## Chart of accounts
 A chart *template* (kontoplansmall, e.g. BAS or EUBAS97) is a shared reference

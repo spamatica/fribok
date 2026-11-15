@@ -258,3 +258,66 @@ func TestRattaPanelLabelAndScript(t *testing.T) {
 		t.Error("the Verifikationer page lacks the script that keeps one Rätta panel open")
 	}
 }
+
+func TestSectionOf(t *testing.T) {
+	for path, want := range map[string]string{
+		"/": "home", "/companies": "home", "/import": "home", "/templates": "templates", "/templates/3/delete": "templates",
+		"/c/1/": "", "/c/1": "", "/c/1/close": "", "/c/1/export.se": "", "/c/1/lock": "",
+		"/c/1/accounts": "accounts", "/c/1/accounts/1930": "accounts", "/c/1/vouchers": "vouchers",
+		"/c/1/vouchers/new": "vouchers", "/c/1/vouchers/5/correct": "vouchers", "/c/1/deleted": "vouchers",
+		"/c/12/ledger": "ledger", "/c/1/trial": "trial", "/c/1/income": "income", "/c/1/balance": "balance",
+	} {
+		if got := sectionOf(path); got != want {
+			t.Errorf("sectionOf(%q) = %q, want %q", path, got, want)
+		}
+	}
+}
+
+// The top bar marks exactly one page as current, and the pages use the stylesheet.
+func TestTopBarAndStylesheet(t *testing.T) {
+	c := newClient(t)
+	c.importSmall()
+	for path, current := range map[string]string{
+		"/":                  `href="/"`,
+		"/templates":         `href="/templates"`,
+		"/c/1/":              `href="/c/1/"`,
+		"/c/1/accounts":      `href="/c/1/accounts"`,
+		"/c/1/accounts/1930": `href="/c/1/accounts"`,
+		"/c/1/vouchers":      `href="/c/1/vouchers"`,
+		"/c/1/vouchers/new":  `href="/c/1/vouchers"`,
+		"/c/1/deleted":       `href="/c/1/vouchers"`,
+		"/c/1/ledger":        `href="/c/1/ledger"`,
+		"/c/1/trial":         `href="/c/1/trial"`,
+		"/c/1/income":        `href="/c/1/income"`,
+		"/c/1/balance":       `href="/c/1/balance"`,
+		"/c/1/close?year=1":  `href="/c/1/"`,
+	} {
+		code, b := c.get(path)
+		if code != 200 && code != 422 {
+			t.Errorf("%s: %d", path, code)
+			continue
+		}
+		if n := strings.Count(b, `aria-current="page"`); n != 1 {
+			t.Errorf("%s: %d current links, want 1", path, n)
+		}
+		if !strings.Contains(b, "<a "+current+` aria-current="page"`) && !strings.Contains(b, `class="company" `+current+` aria-current="page"`) {
+			t.Errorf("%s: wrong link marked current, want %s", path, current)
+		}
+		if !strings.Contains(b, `<link rel="stylesheet" href="/static/style.css">`) || !strings.Contains(b, "<main>") || !strings.Contains(b, "</main>") {
+			t.Errorf("%s: missing stylesheet or <main>", path)
+		}
+		if strings.Contains(b, "<style>") {
+			t.Errorf("%s: still has inline CSS", path)
+		}
+	}
+	req, _ := http.NewRequest("GET", c.base+"/static/style.css", nil)
+	resp, err := c.c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	css, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/css") || !strings.Contains(string(css), "prefers-color-scheme: dark") || !strings.Contains(string(css), "@media print") {
+		t.Errorf("stylesheet: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+}

@@ -1,7 +1,7 @@
 {{template "head" "Ny verifikation"}}
 {{template "nav" .P}}
 <h1>Ny verifikation</h1>
-{{if .Notice}}<p><strong>{{.Notice}}</strong></p>{{end}}
+{{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 {{define "voucherrow"}}
       <tr>
@@ -31,7 +31,7 @@
   <ul id="acct-data" hidden>
     {{range .Accounts}}<li data-n="{{.Number}}" data-m="{{.Name}}"></li>{{end}}
   </ul>
-  <p><button>Bokför</button> <span class="muted">Ctrl+Enter bokför. Enter går till nästa fält.</span></p>
+  <p><button class="primary">Bokför</button> <span class="muted">Ctrl+Enter bokför. Enter går till nästa fält.</span></p>
 </form>
 <p class="muted">En bokförd verifikation kan inte ändras eller tas bort. Fel rättas med en rättelseverifikation.</p>
 <script src="/static/account-picker.js"></script>

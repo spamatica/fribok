@@ -2,7 +2,7 @@
 {{template "nav" .P}}
 <h1>Kontoplan</h1>
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-{{if .Notice}}<p><strong>{{.Notice}}</strong></p>{{end}}
+{{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
 {{if .HasTplate}}
 <p>Mall: <strong>{{.P.Company.TemplateName}}</strong>. {{.EnabledN}} av {{.Total}} konton är aktiverade.
    <span class="muted">Bara aktiverade konton kan bokföras på och syns i rapporter och SIE-export.</span></p>
@@ -11,9 +11,11 @@
 {{end}}
 
 <form method="get" action="/c/{{.P.Company.ID}}/accounts">
-  <label>Sök <input name="q" value="{{.Q}}" placeholder="nummer eller namn"></label>
-  <label><input type="checkbox" name="enabled" value="1"{{if .OnlyOn}} checked{{end}}> Visa bara aktiverade</label>
-  <button>Visa</button>
+  <p>
+    <label>Sök <input name="q" value="{{.Q}}" placeholder="nummer eller namn"></label>
+    <label><input type="checkbox" name="enabled" value="1"{{if .OnlyOn}} checked{{end}}> Visa bara aktiverade</label>
+    <button>Visa</button>
+  </p>
 </form>
 
 <form method="post" action="/c/{{.P.Company.ID}}/chart">
@@ -21,7 +23,7 @@
   {{if .OnlyOn}}<input type="hidden" name="enabled" value="1">{{end}}
   <p class="muted">{{len .Rows}} konton visas.</p>
   <p>
-    <button name="action" value="save">Spara</button>
+    <button class="primary" name="action" value="save">Spara</button>
     {{if .HasTplate}}<button name="action" value="enable_shown" title="Aktiverar alla konton som visas just nu">Aktivera alla som visas</button>{{end}}
   </p>
   <table>
@@ -44,12 +46,13 @@
     {{end}}
     </tbody>
   </table>
-  <p><button name="action" value="save">Spara</button></p>
+  <p><button class="primary" name="action" value="save">Spara</button></p>
 </form>
 
 <h2>Nytt eget konto</h2>
 <p class="muted">För konton som inte finns i mallen. Konton i mallen aktiverar du i listan ovan.</p>
 <form method="post" action="/c/{{.P.Company.ID}}/accounts">
+  <p>
   <label>Nummer <input name="number" value="{{.Form.Number}}" size="6" required></label>
   <label>Namn <input name="name" value="{{.Form.Name}}" size="40" required></label>
   <label>Typ
@@ -60,6 +63,7 @@
       <option value="I"{{if eq .Form.Type "I"}} selected{{end}}>Intäkt (I)</option>
       <option value="K"{{if eq .Form.Type "K"}} selected{{end}}>Kostnad (K)</option>
     </select></label>
-  <button>Lägg till</button>
+  <button class="primary">Lägg till</button>
+  </p>
 </form>
 {{template "foot"}}

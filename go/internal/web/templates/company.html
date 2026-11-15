@@ -2,20 +2,32 @@
 {{template "nav" .}}
 <h1>{{.Company.Name}}</h1>
 <p class="muted">{{.Company.OrgNr}}</p>
-<ul>
-{{range .Years}}<li>{{.Start}} – {{.End}}{{if .LockedUntil}} <span class="muted">(låst t.o.m. {{.LockedUntil}})</span>{{end}}:
-  <a href="/c/{{$.Company.ID}}/vouchers?year={{.ID}}">verifikationer</a>,
-  <a href="/c/{{$.Company.ID}}/trial?year={{.ID}}">saldobalans</a>,
-  <a href="/c/{{$.Company.ID}}/income?year={{.ID}}">resultaträkning</a>,
-  <a href="/c/{{$.Company.ID}}/balance?year={{.ID}}">balansräkning</a>{{if lt .LockedUntil .End}},
-  <a href="/c/{{$.Company.ID}}/close?year={{.ID}}">avsluta året</a>{{end}}</li>{{end}}
-</ul>
+<h2>Räkenskapsår</h2>
+<table>
+<thead><tr><th>Räkenskapsår</th><th>Status</th><th>Gå till</th></tr></thead>
+<tbody>
+{{range .Years}}<tr>
+  <td>{{.Start}} – {{.End}}</td>
+  <td>{{if not .LockedUntil}}öppet{{else}}<span class="muted">låst t.o.m. {{.LockedUntil}}{{if ge .LockedUntil .End}} (avslutat){{end}}</span>{{end}}</td>
+  <td class="links">
+    <a href="/c/{{$.Company.ID}}/vouchers?year={{.ID}}">verifikationer</a>
+    <a href="/c/{{$.Company.ID}}/trial?year={{.ID}}">saldobalans</a>
+    <a href="/c/{{$.Company.ID}}/income?year={{.ID}}">resultaträkning</a>
+    <a href="/c/{{$.Company.ID}}/balance?year={{.ID}}">balansräkning</a>
+    {{if lt .LockedUntil .End}}<a href="/c/{{$.Company.ID}}/close?year={{.ID}}">avsluta året</a>{{end}}
+  </td>
+</tr>{{end}}
+</tbody>
+</table>
 <h2>Lås period</h2>
 <p class="muted">Inga verifikationer kan bokföras med datum till och med det låsta datumet. En låsning kan flyttas framåt men inte hävas.</p>
 <form method="post" action="/c/{{.Company.ID}}/lock">
-  <select name="year">{{range .Years}}<option value="{{.ID}}">{{.Start}} – {{.End}}</option>{{end}}</select>
-  <label>Lås till och med <input name="until" size="10" maxlength="10" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" title="Datum som yyyy-mm-dd" inputmode="numeric" autocomplete="off" required></label>
-  <button>Lås</button>
+  <p>
+    <select name="year">{{range .Years}}<option value="{{.ID}}">{{.Start}} – {{.End}}</option>{{end}}</select>
+    <label>Lås till och med <input name="until" size="10" maxlength="10" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" title="Datum som yyyy-mm-dd" inputmode="numeric" autocomplete="off" required></label>
+    <button>Lås</button>
+  </p>
 </form>
-<p><a href="/c/{{.Company.ID}}/export.se">Exportera SIE 4</a></p>
+<h2>Export</h2>
+<p><a href="/c/{{.Company.ID}}/export.se">Exportera SIE 4</a> <span class="muted">(alla räkenskapsår, för revisor eller backup)</span></p>
 {{template "foot"}}

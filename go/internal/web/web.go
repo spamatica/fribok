@@ -37,6 +37,8 @@ func New(store *ledger.Store) *Server {
 	funcs := template.FuncMap{
 		"kr":  func(o money.Ore) string { return o.Format() },
 		"neg": func(o money.Ore) money.Ore { return -o },
+		// Replaced per request in render; this one only lets the templates parse.
+		"active": func(string) bool { return false },
 	}
 	return &Server{
 		store: store,
@@ -74,12 +76,61 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{id}/close", s.closeYear)
 	mux.HandleFunc("POST /c/{id}/close", s.closeYear)
 	mux.Handle("GET /static/", http.FileServerFS(staticFS))
-	return sameOrigin(mux)
+	return withPath(sameOrigin(mux))
+}
+
+// pathWriter carries the request path to render, so that the top bar can
+// mark the current page without every handler passing it on.
+type pathWriter struct {
+	http.ResponseWriter
+	path string
+}
+
+func (w *pathWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func withPath(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(&pathWriter{ResponseWriter: w, path: r.URL.Path}, r)
+	})
+}
+
+// sectionOf names the part of the app a request path belongs to, as used by
+// the top bar: "accounts", "vouchers", "ledger", "trial", "income" and
+// "balance" for those pages of a company, "" for the company's overview (and
+// the pages reached from it), and "home" or "templates" outside companies.
+func sectionOf(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if parts[0] == "c" {
+		if len(parts) < 3 {
+			return ""
+		}
+		switch parts[2] {
+		case "accounts", "vouchers", "ledger", "trial", "income", "balance":
+			return parts[2]
+		case "deleted": // the log of deleted vouchers
+			return "vouchers"
+		}
+		return ""
+	}
+	if parts[0] == "templates" {
+		return "templates"
+	}
+	return "home"
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
+	t, err := s.tmpl.Clone() // the base set is never executed, so it stays cloneable
+	if err != nil {
+		log.Printf("render %s: %v", name, err)
+		return
+	}
+	section := ""
+	if pw, ok := w.(*pathWriter); ok {
+		section = sectionOf(pw.path)
+	}
+	t.Funcs(template.FuncMap{"active": func(sec string) bool { return sec == section }})
+	if err := t.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)
 	}
 }

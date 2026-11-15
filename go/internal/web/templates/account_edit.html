@@ -11,11 +11,11 @@
       <option value="I"{{if eq .A.Type "I"}} selected{{end}}>Intäkt (I)</option>
       <option value="K"{{if eq .A.Type "K"}} selected{{end}}>Kostnad (K)</option>
     </select></label></p>
-  <p><button>Spara</button> <a href="/c/{{.P.Company.ID}}/accounts?q={{.A.Number}}">Avbryt</a></p>
+  <p><button class="primary">Spara</button> <a href="/c/{{.P.Company.ID}}/accounts?q={{.A.Number}}">Avbryt</a></p>
 </form>
 {{if .InUse}}<p class="muted">Kontot har bokföringar eller saldon: namnet kan ändras, men typen kan inte ändras och kontot kan inte inaktiveras eller tas bort.</p>
 {{else}}
 <form method="post" action="/c/{{.P.Company.ID}}/accounts/{{.A.Number}}/delete">
-  <button>{{if .InTemplate}}Inaktivera kontot{{else}}Ta bort kontot{{end}}</button>
+  <button class="danger">{{if .InTemplate}}Inaktivera kontot{{else}}Ta bort kontot{{end}}</button>
 </form>{{if .InTemplate}}<p class="muted">Kontot finns kvar i mallen och kan aktiveras igen.</p>{{end}}{{end}}
 {{template "foot"}}

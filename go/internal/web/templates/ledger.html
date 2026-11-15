@@ -4,9 +4,11 @@
 {{template "yearpicker" .}}
 <form method="get" action="/c/{{.P.Company.ID}}/ledger">
   <input type="hidden" name="year" value="{{.P.Year.ID}}">
-  <label>Från konto <input name="from" value="{{.From}}" size="6"></label>
-  <label>Till konto <input name="to" value="{{.To}}" size="6"></label>
-  <button>Visa</button>
+  <p>
+    <label>Från konto <input name="from" value="{{.From}}" size="6"></label>
+    <label>Till konto <input name="to" value="{{.To}}" size="6"></label>
+    <button>Visa</button>
+  </p>
 </form>
 {{range .Accounts}}
 <h3>{{.Account}} {{.Name}}</h3>

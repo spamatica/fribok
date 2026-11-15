@@ -1,0 +1,205 @@
+/* Fribok: one stylesheet, no framework. Light and dark follow the system. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1d2329;
+  --muted: #5d6874;
+  --line: #d8dee6;
+  --field: #a3adb9;
+  --card: #f5f7fa;
+  --hover: #edf1f6;
+  --accent: #1a5fd0;
+  --accent-fg: #ffffff;
+  --danger: #b42318;
+  --ok: #1a7f37;
+  --shadow: 0 4px 14px rgb(0 0 0 / .18);
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121519;
+    --fg: #e4e8ec;
+    --muted: #98a3af;
+    --line: #2c333b;
+    --field: #4b5662;
+    --card: #1a1f25;
+    --hover: #232a33;
+    --accent: #5b9bff;
+    --accent-fg: #0b1220;
+    --danger: #ff7b72;
+    --ok: #4cc065;
+    --shadow: 0 4px 14px rgb(0 0 0 / .65);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+main { max-width: 66rem; margin: 0 auto; padding: 1rem 1rem 3rem; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+h1 { font-size: 1.5rem; line-height: 1.25; margin: .8rem 0 1rem; }
+h2 { font-size: 1.15rem; margin: 1.6rem 0 .5rem; }
+h3 { font-size: 1rem; margin: 1.2rem 0 .3rem; }
+p { margin: .6rem 0; }
+ul { padding-left: 1.2rem; }
+.muted { color: var(--muted); }
+.print-only { display: none; }
+
+/* Top bar ---------------------------------------------------------------- */
+header.top {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .1rem 1.25rem;
+  padding: .55rem 1rem 0;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 800; font-size: 1.15rem; letter-spacing: .02em; color: var(--fg); }
+.brand:hover { text-decoration: none; color: var(--accent); }
+.company { font-weight: 600; color: var(--muted); }
+.company[aria-current="page"] { color: var(--fg); }
+header.top nav { display: flex; flex-wrap: wrap; gap: .1rem; }
+.company ~ nav { flex-basis: 100%; margin-top: .3rem; }
+header.top nav a {
+  padding: .4rem .8rem;
+  color: var(--muted);
+  border-bottom: 3px solid transparent;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+header.top nav a:hover { color: var(--fg); background: var(--hover); text-decoration: none; }
+header.top nav a[aria-current="page"] { color: var(--fg); font-weight: 600; border-bottom-color: var(--accent); }
+
+/* Messages --------------------------------------------------------------- */
+.error, .notice {
+  margin: .8rem 0; padding: .6rem .9rem;
+  border-left: 4px solid var(--danger); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.notice { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.error { color: var(--danger); }
+
+/* Forms ------------------------------------------------------------------ */
+form > p, form > .row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem; margin: .7rem 0; }
+label { display: inline-flex; align-items: center; gap: .45rem; }
+input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]), select {
+  font: inherit; color: inherit; background: var(--bg);
+  padding: .3rem .5rem; border: 1px solid var(--field); border-radius: var(--radius);
+}
+input:not([type=checkbox]):not([type=radio]):focus, select:focus { border-color: var(--accent); }
+input::placeholder { color: var(--muted); opacity: .8; }
+input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
+
+button, summary.btn {
+  font: inherit; line-height: 1.3; cursor: pointer; color: var(--fg);
+  padding: .3rem .9rem; border: 1px solid var(--field); border-radius: var(--radius);
+  background: var(--card);
+}
+button:hover, summary.btn:hover { background: var(--hover); border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+button.primary:hover { background: var(--accent); filter: brightness(1.12); }
+button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+button.danger:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+button:disabled { opacity: .5; cursor: default; }
+input[type=file] { font: inherit; max-width: 100%; }
+input[type=file]::file-selector-button {
+  font: inherit; cursor: pointer; margin-right: .7rem; padding: .3rem .9rem; color: var(--fg);
+  border: 1px solid var(--field); border-radius: var(--radius); background: var(--card);
+}
+input[type=file]::file-selector-button:hover { background: var(--hover); }
+summary.btn { display: inline-block; list-style: none; }
+summary.btn::-webkit-details-marker { display: none; }
+details[open] > summary.btn { background: var(--hover); border-color: var(--muted); }
+
+/* Tables ----------------------------------------------------------------- */
+table { width: 100%; border-collapse: collapse; margin: .5rem 0 1rem; }
+th, td { padding: .3rem .6rem; text-align: left; vertical-align: baseline; }
+td { border-bottom: 1px solid var(--line); }
+th {
+  position: sticky; top: 0; z-index: 1; background: var(--bg);
+  font-size: .85em; font-weight: 600; color: var(--muted);
+  border-bottom: 2px solid var(--line);
+}
+th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; width: 1%; padding-left: 1.5rem; }
+td.links a { margin-right: 1rem; white-space: nowrap; }
+tbody tr:hover { background: var(--hover); }
+tfoot td { font-weight: 600; border-top: 2px solid var(--line); border-bottom: 0; }
+td.ind { padding-left: 1.6rem; }
+tr.head td { padding-top: 1.1rem; font-weight: 600; border-bottom: 0; }
+tr.head:hover { background: none; }
+tr.sub td { font-weight: 600; border-top: 1px solid var(--field); }
+tr.tot td { font-weight: 700; background: var(--card); border-top: 2px solid var(--field); }
+
+/* Fiscal year picker ----------------------------------------------------- */
+.years { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.years strong, .years a { padding: .1rem .7rem; border: 1px solid var(--line); border-radius: 999px; }
+.years strong { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.years a:hover { background: var(--hover); text-decoration: none; }
+
+/* Vouchers --------------------------------------------------------------- */
+.voucher {
+  position: relative; margin: 1rem 0; padding: .6rem .9rem;
+  border: 1px solid var(--field); border-radius: var(--radius); background: var(--card);
+}
+.voucher table { margin: .4rem 0 0; }
+.voucher tr:last-child td { border-bottom: 0; }
+.voucher tbody tr:hover { background: var(--hover); }
+.vhead { padding-right: 6.5rem; min-height: 1.8rem; }
+details.correct { position: absolute; top: .5rem; right: .7rem; }
+details.correct:not([open]) .lbl-close, details.correct[open] .lbl-open { display: none; }
+details.correct .panel {
+  position: absolute; right: 0; top: calc(100% + .35rem); z-index: 5; width: min(22rem, 80vw);
+  padding: .8rem .9rem; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--field); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.panel form { margin: 0; }
+.panel label { display: block; margin-bottom: .5rem; }
+.panel input { display: block; width: 100%; margin-top: .15rem; }
+.panel form.delete { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line); }
+
+/* Account picker --------------------------------------------------------- */
+.ac { position: relative; white-space: nowrap; }
+.ac-list {
+  position: absolute; left: 0; top: 100%; z-index: 10; min-width: 18rem; max-height: 15rem; overflow: auto;
+  margin: .15rem 0 0; padding: .2rem 0; list-style: none;
+  background: var(--bg); color: var(--fg); scrollbar-color: var(--field) var(--bg);
+  border: 1px solid var(--field); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.ac-list li { padding: .25rem .75rem; cursor: pointer; white-space: nowrap; }
+.ac-list li.sel { background: var(--accent); color: var(--accent-fg); }
+.acctname { font-size: .85em; color: var(--muted); margin-left: .5rem; }
+
+/* Small screens ---------------------------------------------------------- */
+@media (max-width: 42rem) {
+  main { padding: .75rem .6rem 2rem; }
+  header.top { padding: .45rem .6rem 0; }
+  header.top nav a { padding: .35rem .55rem; }
+  table { font-size: .92rem; }
+  th, td { padding: .25rem .35rem; }
+  h1 { font-size: 1.3rem; }
+}
+
+/* Print: the reports on paper -------------------------------------------- */
+@media print {
+  :root {
+    color-scheme: light;
+    --bg: #fff; --fg: #000; --muted: #444; --line: #bbb; --field: #888; --card: #fff; --hover: #fff;
+  }
+  header.top, button, details, form, .noprint, .ac-list, .years a { display: none !important; }
+  .print-only { display: block; font-weight: 600; margin-bottom: .4rem; }
+  .years strong { background: none; color: inherit; border: 0; padding: 0; }
+  main { max-width: none; padding: 0; }
+  body { font-size: 10.5pt; }
+  th { position: static; }
+  a { color: inherit; }
+  tbody tr:hover { background: none; }
+  thead { display: table-header-group; }
+  tr, .voucher { break-inside: avoid; }
+}

@@ -3,8 +3,8 @@
 <h1>Verifikationer</h1>
 {{template "yearpicker" .}}
 {{if .P.Year.LockedUntil}}<p class="muted">Låst till och med {{.P.Year.LockedUntil}}.</p>{{end}}
-{{if .Notice}}<p><strong>{{.Notice}}</strong></p>{{end}}
-<p><a href="/c/{{.P.Company.ID}}/vouchers/new?year={{.P.Year.ID}}">Ny verifikation</a>
+{{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
+<p class="noprint"><a href="/c/{{.P.Company.ID}}/vouchers/new?year={{.P.Year.ID}}">Ny verifikation</a>
    · <a href="/c/{{.P.Company.ID}}/deleted">Raderade verifikationer</a></p>
 {{range .Vouchers}}
 <div class="voucher" id="v{{.ID}}">
@@ -20,7 +20,7 @@
       <form method="post" action="/c/{{$.P.Company.ID}}/vouchers/{{.ID}}/correct">
         <label>Datum <input name="date" value="{{.Date}}" size="10" maxlength="10" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" required></label>
         <label>Anledning <input name="reason" required></label>
-        <button>Skapa rättelse</button>
+        <button class="primary">Skapa rättelse</button>
       </form>
       {{if eq .ID $.DeletableID}}
       <form class="delete" method="post" action="/c/{{$.P.Company.ID}}/vouchers/{{.ID}}/delete">
