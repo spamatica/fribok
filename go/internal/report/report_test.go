@@ -36,7 +36,7 @@ func TestStatementsFromSyntheticRows(t *testing.T) {
 		row("8999", "Årets resultat", 0),
 		row("4711", "Konto utanför", 0),
 	}
-	is := IncomeStatement(rows)
+	is := IncomeStatement(rows, nil)
 	// income 80, costs -45, financial +5 => profit 40
 	if is.Result != 40_00 {
 		t.Errorf("result = %s, want 40.00", is.Result)
@@ -44,7 +44,7 @@ func TestStatementsFromSyntheticRows(t *testing.T) {
 	if v, _ := find(is, "Rörelseresultat"); v != 35_00 {
 		t.Errorf("rörelseresultat = %s", v)
 	}
-	bs := BalanceSheet(rows)
+	bs := BalanceSheet(rows, nil)
 	if bs.Check != 0 {
 		t.Errorf("balance sheet does not balance: %s", bs.Check)
 	}
@@ -59,12 +59,12 @@ func TestStatementsFromSyntheticRows(t *testing.T) {
 func TestUnclassifiedAccountsAreKept(t *testing.T) {
 	rows := []ledger.TrialRow{row("1930", "Bank", 10_00), row("2010", "EK", -10_00),
 		row("3010", "Intäkt", -5_00), row("9500", "Udda", 5_00)}
-	is := IncomeStatement(rows) // 9500 is outside 3000-8999 and is ignored by design
+	is := IncomeStatement(rows, nil) // 9500 is outside 3000-8999 and is ignored by design
 	if is.Result != 5_00 {
 		t.Errorf("result = %s", is.Result)
 	}
 	rows = []ledger.TrialRow{row("1930", "Bank", 10_00), row("1abc", "Konstig", 5_00), row("2010", "EK", -15_00)}
-	bs := BalanceSheet(rows)
+	bs := BalanceSheet(rows, nil)
 	if bs.Check != 0 {
 		// Accounts that match no balance sheet range count as result accounts,
 		// so the sheet still balances: it is derived from the whole trial.
@@ -115,11 +115,11 @@ func TestRealFile(t *testing.T) {
 			want -= r.Amount
 		}
 	}
-	is := IncomeStatement(rows)
+	is := IncomeStatement(rows, nil)
 	if is.Result != want {
 		t.Errorf("income statement result %s, want %s", is.Result, want)
 	}
-	bs := BalanceSheet(rows)
+	bs := BalanceSheet(rows, nil)
 	if bs.Check != 0 {
 		t.Errorf("balance sheet check = %s", bs.Check)
 	}
@@ -133,4 +133,48 @@ func TestRealFile(t *testing.T) {
 		t.Errorf("assets %s, want %s", got, assets)
 	}
 	t.Logf("result %s, assets %s", is.Result, assets)
+}
+
+func TestPreviousYearColumn(t *testing.T) {
+	cur := []ledger.TrialRow{
+		row("1930", "Bank", 200_00), row("2010", "Eget kapital", -150_00),
+		row("3010", "Försäljning", -100_00), row("5010", "Hyra", 50_00)}
+	prev := []ledger.TrialRow{
+		row("1930", "Bank", 150_00), row("2010", "Eget kapital", -120_00),
+		row("3010", "Försäljning", -60_00), row("5010", "Hyra", 20_00),
+		row("6990", "Endast i fjol", 10_00)}
+	is := IncomeStatement(cur, prev)
+	if !is.HasPrev || is.Result != 50_00 || is.PrevResult != 30_00 {
+		t.Errorf("result %s / prev %s, want 50.00 / 30.00", is.Result, is.PrevResult)
+	}
+	var found bool
+	for _, l := range is.Lines {
+		if l.Account == "6990" {
+			found = true
+			if l.Amount != 0 || l.Prev != -10_00 {
+				t.Errorf("account only in the previous year: %+v", l)
+			}
+		}
+	}
+	if !found {
+		t.Error("account that only has a previous-year balance is missing")
+	}
+	bs := BalanceSheet(cur, prev)
+	if bs.Check != 0 {
+		t.Errorf("check = %s", bs.Check)
+	}
+	if v, _ := find(bs, "SUMMA TILLGÅNGAR"); v != 200_00 {
+		t.Errorf("assets = %s", v)
+	}
+	for _, l := range bs.Lines {
+		if l.Label == "SUMMA TILLGÅNGAR" && l.Prev != 150_00 {
+			t.Errorf("previous assets = %s", l.Prev)
+		}
+		if l.Label == "SUMMA EGET KAPITAL OCH SKULDER" && l.Prev != 150_00 {
+			t.Errorf("previous equity and liabilities = %s (prev trial sums to zero)", l.Prev)
+		}
+	}
+	if IncomeStatement(cur, nil).HasPrev {
+		t.Error("HasPrev without a previous year")
+	}
 }

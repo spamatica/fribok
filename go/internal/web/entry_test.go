@@ -82,6 +82,10 @@ func (c *client) importSmall() {
 	if code, b, h := c.do(req); code != http.StatusSeeOther || h.Get("Location") != "/c/1/" {
 		c.t.Fatalf("import: %d %q %s", code, h.Get("Location"), b)
 	}
+	// The file only uses 1930 and 3999; enable 6570 from the template as well.
+	if code, b, _ := c.post("/c/1/chart", url.Values{"shown": {"6570"}, "on": {"6570"}, "action": {"save"}}, nil); code != http.StatusSeeOther {
+		c.t.Fatalf("enable 6570: %d %s", code, b)
+	}
 }
 
 func postedForm(date, text string, rows ...[4]string) url.Values {
@@ -239,5 +243,133 @@ func TestCloseYearFlow(t *testing.T) {
 	_, vs := c.get("/c/1/vouchers?year=1")
 	if !strings.Contains(vs, "BS1") {
 		t.Errorf("closing voucher missing:\n%s", vs)
+	}
+}
+
+func TestTemplatesChartAndCompanies(t *testing.T) {
+	c := newClient(t)
+	c.importSmall() // company 1; its chart became the template "Importerad kontoplan: Förening"
+
+	// Company 1 has all three accounts of the template, two used by the file and 6570 enabled by the helper.
+	_, b := c.get("/c/1/accounts")
+	if !strings.Contains(b, "Importerad kontoplan: Förening") || !strings.Contains(b, "3 av 3 konton är aktiverade") {
+		t.Fatalf("chart page of company 1:\n%s", b)
+	}
+	// 6570 is not used, so it can be disabled; the used ones cannot.
+	if code, _, _ := c.post("/c/1/chart", url.Values{"shown": {"1930", "3999", "6570"}, "on": {"1930", "3999"}, "action": {"save"}}, nil); code != http.StatusSeeOther {
+		t.Fatalf("disable unused: %d", code)
+	}
+	_, b = c.get("/c/1/accounts?enabled=1")
+	if !strings.Contains(b, "2 av 3 konton är aktiverade") || strings.Contains(b, "Bankkostnader") || !strings.Contains(b, "Medlemsavgift") {
+		t.Errorf("only-enabled filter:\n%s", b)
+	}
+	code, b, _ := c.post("/c/1/chart", url.Values{"shown": {"1930", "3999", "6570"}, "on": {"3999"}, "action": {"save"}}, nil)
+	if code != 422 || !strings.Contains(b, "inaktiveras") || !strings.Contains(b, "1930") {
+		t.Errorf("disable used: %d", code)
+	}
+
+	// The new company form offers the template.
+	if code, b := c.get("/"); code != 200 || !strings.Contains(b, `action="/companies"`) || !strings.Contains(b, "Importerad kontoplan: Förening (3 konton)") {
+		t.Fatalf("index: %d", code)
+	}
+	code, b, _ = c.post("/companies", url.Values{"name": {"Ny"}, "orgnr": {"1-2"}, "start": {"2026-12-31"}, "end": {"2026-01-01"}, "template": {"1"}}, nil)
+	if code != 422 || !strings.Contains(b, "före dess start") || !strings.Contains(b, `value="Ny"`) {
+		t.Errorf("bad company: %d", code)
+	}
+	code, _, h := c.post("/companies", url.Values{"name": {"Ny förening"}, "orgnr": {"802000-1"}, "start": {"2026-01-01"}, "end": {"2026-12-31"}, "template": {"1"}, "enable": {"none"}}, nil)
+	if code != http.StatusSeeOther || h.Get("Location") != "/c/2/" {
+		t.Fatalf("create company: %d %q", code, h.Get("Location"))
+	}
+	if _, b := c.get("/c/2/accounts"); !strings.Contains(b, "0 av 3 konton är aktiverade") {
+		t.Errorf("new company chart:\n%s", b)
+	}
+	// Nothing is enabled, so booking fails until the accounts are enabled.
+	f := postedForm("2026-03-01", "första", [4]string{"1930", "50", "", ""}, [4]string{"3999", "", "50", ""})
+	f.Set("year", "2")
+	if code, b, _ := c.post("/c/2/vouchers", f, nil); code != 422 || !strings.Contains(b, "finns inte i kontoplanen") {
+		t.Errorf("booking on disabled accounts: %d", code)
+	}
+	// Search, then enable everything that is shown.
+	if _, b := c.get("/c/2/accounts?q=19"); !strings.Contains(b, "1 konton visas") {
+		t.Errorf("search:\n%s", b)
+	}
+	if code, _, _ := c.post("/c/2/chart", url.Values{"shown": {"1930", "3999"}, "action": {"enable_shown"}, "q": {""}}, nil); code != http.StatusSeeOther {
+		t.Fatalf("enable shown: %d", code)
+	}
+	if _, b := c.get("/c/2/accounts"); !strings.Contains(b, "2 av 3 konton är aktiverade") {
+		t.Errorf("after enabling:\n%s", b)
+	}
+	if code, b, h := c.post("/c/2/vouchers", f, nil); code != http.StatusSeeOther || !strings.HasPrefix(h.Get("Location"), "/c/2/vouchers?year=2") {
+		t.Errorf("booking after enabling: %d %s", code, b)
+	}
+	// The chart of company 2 cannot touch company 1.
+	if _, b := c.get("/c/1/accounts"); !strings.Contains(b, "2 av 3 konton är aktiverade") {
+		t.Errorf("company 1 changed:\n%s", b)
+	}
+
+	// Custom accounts: not for numbers in the template, listed as "egen", not togglable.
+	if code, b, _ := c.post("/c/2/accounts", url.Values{"number": {"6570"}, "name": {"x"}}, nil); code != 422 || !strings.Contains(b, "finns i kontoplansmallen") {
+		t.Errorf("template number as custom: %d", code)
+	}
+	if code, _, _ := c.post("/c/2/accounts", url.Values{"number": {"7777"}, "name": {"Eget konto"}}, nil); code != http.StatusSeeOther {
+		t.Fatalf("custom account: %d", code)
+	}
+	if _, b := c.get("/c/2/accounts?q=7777"); !strings.Contains(b, "Eget konto") || !strings.Contains(b, ">egen<") {
+		t.Errorf("custom account listing:\n%s", b)
+	}
+	// Edit page: rename, and deactivate an unused template account.
+	if code, b := c.get("/c/2/accounts/7777"); code != 200 || !strings.Contains(b, "Ta bort kontot") {
+		t.Errorf("custom edit page: %d", code)
+	}
+	if code, _, _ := c.post("/c/2/accounts/7777", url.Values{"name": {"Eget konto 2"}, "type": {"K"}}, nil); code != http.StatusSeeOther {
+		t.Errorf("rename: %d", code)
+	}
+	if code, _, _ := c.post("/c/2/accounts/7777/delete", url.Values{}, nil); code != http.StatusSeeOther {
+		t.Errorf("delete custom: %d", code)
+	}
+	if code, _ := c.get("/c/2/accounts/7777"); code != 404 {
+		t.Errorf("deleted account page: %d", code)
+	}
+	if code, _ := c.get("/c/2/accounts/6570"); code != 404 {
+		t.Errorf("disabled account has an edit page: %d", code) // not enabled in company 2
+	}
+	if code, b := c.get("/c/1/accounts/1930"); code != 200 || strings.Contains(b, "Ta bort kontot") || strings.Contains(b, "Inaktivera kontot") {
+		t.Errorf("used account edit page: %d", code)
+	}
+
+	// Template management.
+	if code, b := c.get("/templates"); code != 200 || !strings.Contains(b, "Importerad kontoplan: Förening") || !strings.Contains(b, ">2<") {
+		t.Errorf("templates page: %d\n%s", code, b)
+	}
+	upload := func(name, content string) (int, string) {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		fw, _ := mw.CreateFormFile("file", "m.se")
+		fw.Write([]byte(content))
+		mw.WriteField("name", name)
+		mw.Close()
+		req, _ := http.NewRequest("POST", c.base+"/templates", &body)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		code, b, _ := c.do(req)
+		return code, b
+	}
+	chart := "#FNAMN \"X\"\n#KPTYP BAS2025\n#KONTO 1930 \"Bank\"\n#KONTO 2099 \"Årets resultat\"\n"
+	if code, b := upload("BAS 2025", chart); code != http.StatusSeeOther {
+		t.Fatalf("import template: %d %s", code, b)
+	}
+	if code, b := upload("BAS 2025", chart); code != 422 || !strings.Contains(b, "redan en mall") {
+		t.Errorf("duplicate template: %d", code)
+	}
+	if code, b := upload("Tom", "#FNAMN \"X\"\n"); code != 422 || !strings.Contains(b, "ingen kontoplan") {
+		t.Errorf("empty template: %d", code)
+	}
+	if code, b := upload("Trasig", "not sie"); code != 422 || !strings.Contains(b, "kunde inte läsas") {
+		t.Errorf("broken file: %d", code)
+	}
+	if code, b, _ := c.post("/templates/1/delete", url.Values{}, nil); code != 422 || !strings.Contains(b, "används av 2 företag") {
+		t.Errorf("delete used template: %d %s", code, b)
+	}
+	if code, _, _ := c.post("/templates/2/delete", url.Values{}, nil); code != http.StatusSeeOther {
+		t.Errorf("delete unused template: %d", code)
 	}
 }

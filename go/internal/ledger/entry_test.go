@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"sync"
@@ -33,6 +34,10 @@ func setup(t *testing.T) (*Store, int64, FiscalYear, FiscalYear) {
 	s := mustOpen(t)
 	cid, err := s.ImportSIE(context.Background(), doc)
 	if err != nil {
+		t.Fatal(err)
+	}
+	// The file only uses 1930 and 3999; 6570 comes from the template.
+	if err := s.EnableAccounts(context.Background(), cid, []string{"6570"}); err != nil {
 		t.Fatal(err)
 	}
 	ys, _ := s.Years(context.Background(), cid)
@@ -212,6 +217,7 @@ func TestCorrectionCanLandInALaterYear(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.EnableAccounts(ctx, cid, []string{"6570"})
 	ys, _ := s.Years(ctx, cid)
 	var y0, y1 FiscalYear
 	for _, y := range ys {
@@ -251,6 +257,7 @@ func TestConcurrentVouchersGetDistinctNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.EnableAccounts(ctx, cid, []string{"6570"})
 	ys, _ := s.Years(ctx, cid)
 	var cur FiscalYear
 	for _, y := range ys {
@@ -287,29 +294,67 @@ func TestConcurrentVouchersGetDistinctNumbers(t *testing.T) {
 	}
 }
 
+// TestMigrationUpgradesAnOldDatabase builds a database as it was at schema
+// version 2 (before chart templates), with data, and opens it.
 func TestMigrationUpgradesAnOldDatabase(t *testing.T) {
 	path := t.TempDir() + "/old.db"
-	// Simulate a database created before migrations existed.
-	old, err := Open(path)
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
 	if err != nil {
 		t.Fatal(err)
 	}
-	old.db.Exec(`PRAGMA user_version = 0`)
-	old.db.Exec(`ALTER TABLE fiscal_year DROP COLUMN locked_until`)
-	old.db.Exec(`ALTER TABLE voucher DROP COLUMN corrects_id`)
-	old.Close()
+	for _, stmt := range append([]string{schema}, migrations[:2]...) {
+		if _, err := raw.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, stmt := range []string{
+		`INSERT INTO company (id, name, org_nr, kp_type) VALUES (7, 'Gammal förening', '1-2', 'EUBAS97')`,
+		`INSERT INTO fiscal_year (id, company_id, idx, start_date, end_date) VALUES (1, 7, 0, '2025-01-01', '2025-12-31')`,
+		`INSERT INTO account VALUES (7, '1930', 'Bank', 'T'), (7, '3999', 'Avgift', 'I')`,
+		`INSERT INTO voucher (id, company_id, fiscal_year_id, series, number, date, text) VALUES (1, 7, 1, 'V', 1, '2025-01-02', 'start')`,
+		`INSERT INTO voucher_line (voucher_id, seq, account, amount) VALUES (1, 1, '1930', 10000), (1, 2, '3999', -10000)`,
+		`PRAGMA user_version = 2`,
+	} {
+		if _, err := raw.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	raw.Close()
 
 	s, err := Open(path)
 	if err != nil {
-		t.Fatalf("reopen: %v", err)
+		t.Fatalf("open old database: %v", err)
 	}
 	defer s.Close()
+	ctx := context.Background()
 	var v int
 	s.db.QueryRow(`PRAGMA user_version`).Scan(&v)
 	if v != len(migrations) {
 		t.Errorf("user_version = %d, want %d", v, len(migrations))
 	}
-	if _, err := s.db.Exec(`SELECT locked_until FROM fiscal_year`); err != nil {
+	c, err := s.Company(ctx, 7)
+	if err != nil || c.TemplateID == 0 || !strings.Contains(c.TemplateName, "Gammal förening") {
+		t.Fatalf("company = %+v, %v", c, err)
+	}
+	chart, err := s.Chart(ctx, 7)
+	if err != nil || len(chart) != 2 {
+		t.Fatalf("chart = %+v, %v", chart, err)
+	}
+	for _, r := range chart {
+		if !r.InTemplate || !r.Enabled || !r.InUse {
+			t.Errorf("migrated account %+v should be an enabled template account in use", r)
+		}
+	}
+	// Still bookable, and a second open is a no-op.
+	ys, _ := s.Years(ctx, 7)
+	if _, err := s.AddVoucher(ctx, 7, ys[0].ID, NewVoucher{Series: "V", Date: "2025-02-01", Text: "t",
+		Lines: []Line{{Account: "1930", Amount: 100}, {Account: "3999", Amount: -100}}}); err != nil {
 		t.Error(err)
 	}
+	s.Close()
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatalf("second open: %v", err)
+	}
+	s2.Close()
 }

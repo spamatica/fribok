@@ -1,0 +1,21 @@
+{{template "head" "Konto"}}
+{{template "nav" .P}}
+<h1>Konto {{.A.Number}}</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="/c/{{.P.Company.ID}}/accounts/{{.A.Number}}">
+  <p><label>Namn <input name="name" value="{{.A.Name}}" size="50" required></label></p>
+  <p><label>Typ
+    <select name="type"{{if .InUse}} title="Kan inte ändras: kontot har bokföringar eller saldon"{{end}}>
+      <option value="T"{{if eq .A.Type "T"}} selected{{end}}>Tillgång (T)</option>
+      <option value="S"{{if eq .A.Type "S"}} selected{{end}}>Eget kapital/skuld (S)</option>
+      <option value="I"{{if eq .A.Type "I"}} selected{{end}}>Intäkt (I)</option>
+      <option value="K"{{if eq .A.Type "K"}} selected{{end}}>Kostnad (K)</option>
+    </select></label></p>
+  <p><button>Spara</button> <a href="/c/{{.P.Company.ID}}/accounts?q={{.A.Number}}">Avbryt</a></p>
+</form>
+{{if .InUse}}<p class="muted">Kontot har bokföringar eller saldon: namnet kan ändras, men typen kan inte ändras och kontot kan inte inaktiveras eller tas bort.</p>
+{{else}}
+<form method="post" action="/c/{{.P.Company.ID}}/accounts/{{.A.Number}}/delete">
+  <button>{{if .InTemplate}}Inaktivera kontot{{else}}Ta bort kontot{{end}}</button>
+</form>{{if .InTemplate}}<p class="muted">Kontot finns kvar i mallen och kan aktiveras igen.</p>{{end}}{{end}}
+{{template "foot"}}

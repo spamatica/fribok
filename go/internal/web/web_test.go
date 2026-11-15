@@ -46,7 +46,7 @@ func TestImportAndBrowse(t *testing.T) {
 		t.Fatalf("import redirected to %q", loc)
 	}
 
-	for _, path := range []string{"/", loc, loc + "accounts", loc + "vouchers", loc + "trial", loc + "income", loc + "balance", loc + "export.se"} {
+	for _, path := range []string{"/", loc, loc + "accounts", loc + "vouchers", loc + "trial", loc + "ledger", loc + "ledger?from=1900&to=1999", loc + "income", loc + "balance", loc + "export.se"} {
 		r, err := client.Get(ts.URL + path)
 		if err != nil {
 			t.Fatal(err)

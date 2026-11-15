@@ -6,8 +6,10 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	_ "modernc.org/sqlite"
 
@@ -54,6 +56,35 @@ func Open(path string) (*Store, error) {
 var migrations = []string{
 	`ALTER TABLE fiscal_year ADD COLUMN locked_until TEXT NOT NULL DEFAULT '';
 	 ALTER TABLE voucher ADD COLUMN corrects_id INTEGER REFERENCES voucher(id);`,
+	// Closing balances (#UB/#RES) of imported years that have neither vouchers
+	// nor opening balances here, so that they can be shown and re-exported.
+	`CREATE TABLE year_summary (
+	    fiscal_year_id INTEGER NOT NULL REFERENCES fiscal_year(id) ON DELETE CASCADE,
+	    account        TEXT NOT NULL,
+	    closing        INTEGER NOT NULL,
+	    PRIMARY KEY (fiscal_year_id, account)
+	 );`,
+	// Chart templates. Existing companies get a template of their own made
+	// from their current accounts, which all count as enabled.
+	`CREATE TABLE chart_template (
+	    id      INTEGER PRIMARY KEY,
+	    name    TEXT NOT NULL UNIQUE,
+	    kp_type TEXT NOT NULL DEFAULT ''
+	 );
+	 CREATE TABLE template_account (
+	    template_id INTEGER NOT NULL REFERENCES chart_template(id) ON DELETE CASCADE,
+	    number      TEXT NOT NULL,
+	    name        TEXT NOT NULL,
+	    type        TEXT NOT NULL CHECK (type IN ('T','S','K','I')),
+	    PRIMARY KEY (template_id, number)
+	 );
+	 ALTER TABLE company ADD COLUMN template_id INTEGER REFERENCES chart_template(id);
+	 INSERT INTO chart_template (name, kp_type)
+	   SELECT 'Kontoplan för företag ' || id || ' (' || name || ')', kp_type FROM company;
+	 UPDATE company SET template_id =
+	   (SELECT t.id FROM chart_template t WHERE t.name LIKE 'Kontoplan för företag ' || company.id || ' (%');
+	 INSERT INTO template_account (template_id, number, name, type)
+	   SELECT c.template_id, a.number, a.name, a.type FROM account a JOIN company c ON c.id = a.company_id;`,
 }
 
 func (s *Store) migrate() error {
@@ -89,6 +120,17 @@ type Company struct {
 	OrgNr    string
 	Currency string
 	KPType   string
+	// TemplateID is the chart template the company's accounts come from, or 0.
+	TemplateID   int64
+	TemplateName string
+}
+
+const companyCols = `c.id, c.name, c.org_nr, c.currency, c.kp_type, COALESCE(c.template_id, 0), COALESCE(t.name, '')`
+
+func scanCompany(sc interface{ Scan(...any) error }) (Company, error) {
+	var c Company
+	err := sc.Scan(&c.ID, &c.Name, &c.OrgNr, &c.Currency, &c.KPType, &c.TemplateID, &c.TemplateName)
+	return c, err
 }
 
 type FiscalYear struct {
@@ -129,6 +171,9 @@ func (v Voucher) Label() string { return fmt.Sprintf("%s%d", v.Series, v.Number)
 type TrialRow struct {
 	Account, Name string
 	Type          string // T, S, K or I
+	// Imported: only Closing is known (from the #UB/#RES of an imported year
+	// without transactions); Opening, Debit and Credit are zero.
+	Imported      bool
 	Opening       money.Ore
 	Debit, Credit money.Ore // credit is positive here
 	Closing       money.Ore
@@ -188,14 +233,30 @@ func (s *Store) ImportSIE(ctx context.Context, doc *sie.Document) (int64, error)
 		yearID[y.Index], _ = r.LastInsertId()
 	}
 
+	// The file's chart becomes (or reuses) a template; only the accounts the
+	// file actually uses are enabled for the company.
+	tplID, err := templateForImport(ctx, tx, doc)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE company SET template_id=? WHERE id=?`, tplID, companyID); err != nil {
+		return 0, err
+	}
+	used := usedAccounts(doc)
 	known := map[string]bool{}
 	for _, a := range doc.Accounts {
+		if known[a.Number] {
+			return 0, fmt.Errorf("account %s is declared twice", a.Number)
+		}
+		known[a.Number] = true
+		if !used[a.Number] {
+			continue
+		}
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO account (company_id, number, name, type) VALUES (?,?,?,?)`,
 			companyID, a.Number, a.Name, accountType(a)); err != nil {
 			return 0, fmt.Errorf("account %s: %w", a.Number, err)
 		}
-		known[a.Number] = true
 	}
 
 	for _, b := range doc.IB {
@@ -248,10 +309,68 @@ func (s *Store) ImportSIE(ctx context.Context, doc *sie.Document) (int64, error)
 			}
 		}
 	}
+	// Years without vouchers keep the closing balances of the file.
+	hasData := map[int]bool{}
+	for _, v := range doc.Vouchers {
+		if fy, ok := yearFor(doc.Years, v.Date); ok {
+			hasData[fy] = true
+		}
+	}
+	for _, set := range [][]sie.Balance{doc.UB, doc.Res} {
+		for _, b := range set {
+			id, ok := yearID[b.YearIndex]
+			if !ok || hasData[b.YearIndex] {
+				continue
+			}
+			if !known[b.Account] {
+				return 0, fmt.Errorf("#UB/#RES refers to undefined account %s", b.Account)
+			}
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO year_summary (fiscal_year_id, account, closing) VALUES (?,?,?)`,
+				id, b.Account, int64(b.Amount)); err != nil {
+				return 0, fmt.Errorf("closing balance %d %s: %w", b.YearIndex, b.Account, err)
+			}
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return companyID, nil
+}
+
+// usedAccounts is the set of accounts the file posts to or gives balances for.
+func usedAccounts(doc *sie.Document) map[string]bool {
+	used := map[string]bool{}
+	for _, v := range doc.Vouchers {
+		for _, l := range v.Lines {
+			used[l.Account] = true
+		}
+	}
+	for _, set := range [][]sie.Balance{doc.IB, doc.UB, doc.Res} {
+		for _, b := range set {
+			used[b.Account] = true
+		}
+	}
+	return used
+}
+
+// templateForImport finds the template named like the file's #KPTYP, or
+// creates one from the file's chart. Without #KPTYP the template is named
+// after the company.
+func templateForImport(ctx context.Context, tx *sql.Tx, doc *sie.Document) (int64, error) {
+	name := strings.TrimSpace(doc.KPType)
+	if name == "" {
+		name = "Importerad kontoplan: " + doc.CompanyName
+	}
+	var id int64
+	err := tx.QueryRowContext(ctx, `SELECT id FROM chart_template WHERE name=?`, name).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	return createTemplate(ctx, tx, name, doc.KPType, doc.Accounts)
 }
 
 func yearFor(years []sie.Year, date string) (int, bool) {
@@ -264,15 +383,16 @@ func yearFor(years []sie.Year, date string) (int, bool) {
 }
 
 func (s *Store) Companies(ctx context.Context) ([]Company, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, org_nr, currency, kp_type FROM company ORDER BY name`)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+companyCols+` FROM company c LEFT JOIN chart_template t ON t.id = c.template_id ORDER BY c.name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []Company
 	for rows.Next() {
-		var c Company
-		if err := rows.Scan(&c.ID, &c.Name, &c.OrgNr, &c.Currency, &c.KPType); err != nil {
+		c, err := scanCompany(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -281,10 +401,8 @@ func (s *Store) Companies(ctx context.Context) ([]Company, error) {
 }
 
 func (s *Store) Company(ctx context.Context, id int64) (Company, error) {
-	var c Company
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, org_nr, currency, kp_type FROM company WHERE id=?`, id).
-		Scan(&c.ID, &c.Name, &c.OrgNr, &c.Currency, &c.KPType)
-	return c, err
+	return scanCompany(s.db.QueryRowContext(ctx,
+		`SELECT `+companyCols+` FROM company c LEFT JOIN chart_template t ON t.id = c.template_id WHERE c.id=?`, id))
 }
 
 // Years returns the company's fiscal years, newest first.
@@ -381,6 +499,9 @@ func (s *Store) TrialBalance(ctx context.Context, companyID, yearID int64) ([]Tr
 }
 
 func trialBalance(ctx context.Context, q dbtx, companyID, yearID int64) ([]TrialRow, error) {
+	if rows, err := importedTrial(ctx, q, companyID, yearID); err != nil || len(rows) > 0 {
+		return rows, err
+	}
 	rows, err := q.QueryContext(ctx, `
 WITH t AS (
   SELECT l.account,
@@ -408,6 +529,32 @@ SELECT a.number, a.name, a.type, COALESCE(ib.amount, 0), COALESCE(t.d, 0), COALE
 		}
 		r.Opening, r.Debit, r.Credit = money.Ore(ib), money.Ore(d), money.Ore(c)
 		r.Closing = r.Opening + r.Debit - r.Credit
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// importedTrial returns the imported closing balances of a year that has no
+// vouchers, or nothing if the year has vouchers or no imported balances.
+func importedTrial(ctx context.Context, q dbtx, companyID, yearID int64) ([]TrialRow, error) {
+	rows, err := q.QueryContext(ctx, `
+SELECT a.number, a.name, a.type, s.closing
+  FROM year_summary s JOIN account a ON a.company_id = ? AND a.number = s.account
+ WHERE s.fiscal_year_id = ?
+   AND NOT EXISTS (SELECT 1 FROM voucher v WHERE v.fiscal_year_id = s.fiscal_year_id)
+ ORDER BY a.number`, companyID, yearID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrialRow
+	for rows.Next() {
+		r := TrialRow{Imported: true}
+		var c int64
+		if err := rows.Scan(&r.Account, &r.Name, &r.Type, &c); err != nil {
+			return nil, err
+		}
+		r.Closing = money.Ore(c)
 		out = append(out, r)
 	}
 	return out, rows.Err()

@@ -1,4 +1,5 @@
 {{template "head" "Företag"}}
+<nav><a href="/">Företag</a> <a href="/templates">Kontoplansmallar</a></nav>
 <h1>Fribok</h1>
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 <h2>Företag och föreningar</h2>
@@ -8,7 +9,33 @@
 </ul>
 {{else}}<p class="muted">Inget importerat än.</p>{{end}}
 
+<h2>Nytt företag</h2>
+<form method="post" action="/companies">
+  <p>
+    <label>Namn <input name="name" value="{{.Form.Name}}" size="30" required></label>
+    <label>Organisationsnummer <input name="orgnr" value="{{.Form.OrgNr}}" size="13"></label>
+  </p>
+  <p>
+    <label>Första räkenskapsår från <input type="date" name="start" value="{{.Form.Start}}" required></label>
+    <label>till <input type="date" name="end" value="{{.Form.End}}" required></label>
+  </p>
+  <p>
+    <label>Kontoplansmall
+      <select name="template">
+        <option value="">Ingen mall (bara egna konton)</option>
+        {{range .Templates}}<option value="{{.ID}}"{{if eq .ID $.Form.TemplateID}} selected{{end}}>{{.Name}} ({{.Accounts}} konton)</option>{{end}}
+      </select></label>
+    <a href="/templates">Hantera mallar</a>
+  </p>
+  <p>
+    <label><input type="radio" name="enable" value="none"{{if not .Form.EnableAll}} checked{{end}}> Aktivera inga konton ännu (välj dem under Kontoplan)</label><br>
+    <label><input type="radio" name="enable" value="all"{{if .Form.EnableAll}} checked{{end}}> Aktivera alla konton i mallen</label>
+  </p>
+  <p><button>Skapa</button></p>
+</form>
+
 <h2>Importera SIE-fil</h2>
+<p class="muted">Skapar ett nytt företag med saldon och verifikationer från filen. Filens kontoplan blir en mall (eller återanvänder en med samma typ), och bara de konton som filen använder aktiveras.</p>
 <form method="post" action="/import" enctype="multipart/form-data">
   <input type="file" name="file" accept=".se,.si,.sie" required>
   <button>Importera</button>

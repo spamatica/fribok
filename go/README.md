@@ -12,10 +12,28 @@ There is no authentication yet: keep it listening on localhost.
 - `internal/money`  amounts as integer öre (debit positive, credit negative)
 - `internal/sie`    SIE 4 parser (CP437 or UTF-8)
 - `internal/sie`    also writes SIE 4 (CP437)
-- `internal/ledger` SQLite schema and migrations, SIE import/export, trial
-  balance, posting, correcting and locking vouchers
+- `internal/ledger` SQLite schema and migrations, SIE import/export, chart
+  templates, trial balance, posting, correcting and locking vouchers
 - `internal/report` income statement and balance sheet (BAS number ranges)
 - `internal/web`    server-rendered pages (html/template)
+
+## Chart of accounts
+A chart *template* (kontoplansmall, e.g. BAS or EUBAS97) is a shared reference
+list of accounts. A company enables the accounts it actually uses; only
+enabled accounts can be posted to and appear in reports and SIE export. An
+enabled account that is not in the template is a *custom* account.
+
+- A SIE import turns the file's `#KONTO` list into a template (named after
+  `#KPTYP`, reused if it exists) and enables only the accounts the file uses
+  (postings or `#IB`/`#UB`/`#RES`).
+- Templates can also be imported on their own from a SIE file (`/templates`).
+- On the chart page, tick accounts to enable them; "only enabled" and search
+  filters narrow the list, and "Aktivera alla som visas" enables the filtered
+  set. An account with postings or balances cannot be disabled.
+- Closing a year enables the result accounts and 8999 from the template when
+  it needs them, preferring the accounts the company already uses.
+- Databases from before templates are migrated: each company gets a template
+  made from its existing accounts, all enabled.
 
 ## Bookkeeping rules enforced
 - Vouchers must balance, have at least two lines, use known accounts and a
@@ -38,9 +56,20 @@ The ledger and web tests import any `*.se` file placed in `../test_files/`
 (git-ignored, since it is real accounting data) and check the computed
 closing balances against the file's own `#UB`/`#RES` records.
 
+## Pages
+Companies (create new from a template, or import SIE), chart templates,
+chart of accounts (enable/disable from the template, custom accounts, rename),
+vouchers (enter,
+correct), general ledger, trial balance, income statement and balance sheet
+(both with the previous year alongside), year-end closing, period locks and
+SIE export.
+
+Years that are known only from imported closing balances (`#UB`/`#RES` of a
+year without vouchers in the file) are shown in the reports and re-exported,
+but cannot be posted to or closed.
+
 ## Not done yet
-General ledger and journal reports, comparison with the previous year in the
-reports, adding accounts
-and companies without a SIE file, VAT report, SIE dimensions/objects,
-authentication. Imported companies are always new: a second SIE file for the
-same company is not merged.
+Journal report, VAT report, a BAS template to start from (import one from a
+SIE file for now), copying the enabled set from another company, merging a second SIE file into an existing
+company, SIE dimensions/objects, authentication, PDF output (use the
+browser's print function for now).

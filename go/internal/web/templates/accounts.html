@@ -1,10 +1,65 @@
 {{template "head" "Kontoplan"}}
 {{template "nav" .P}}
 <h1>Kontoplan</h1>
-<table>
-<thead><tr><th>Konto</th><th>Namn</th><th>Typ</th></tr></thead>
-<tbody>
-{{range .Accounts}}<tr><td>{{.Number}}</td><td>{{.Name}}</td><td>{{.Type}}</td></tr>{{end}}
-</tbody>
-</table>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Notice}}<p><strong>{{.Notice}}</strong></p>{{end}}
+{{if .HasTplate}}
+<p>Mall: <strong>{{.P.Company.TemplateName}}</strong>. {{.EnabledN}} av {{.Total}} konton är aktiverade.
+   <span class="muted">Bara aktiverade konton kan bokföras på och syns i rapporter och SIE-export.</span></p>
+{{else}}
+<p class="muted">Företaget har ingen kontoplansmall, bara egna konton.</p>
+{{end}}
+
+<form method="get" action="/c/{{.P.Company.ID}}/accounts">
+  <label>Sök <input name="q" value="{{.Q}}" placeholder="nummer eller namn"></label>
+  <label><input type="checkbox" name="enabled" value="1"{{if .OnlyOn}} checked{{end}}> Visa bara aktiverade</label>
+  <button>Visa</button>
+</form>
+
+<form method="post" action="/c/{{.P.Company.ID}}/chart">
+  <input type="hidden" name="q" value="{{.Q}}">
+  {{if .OnlyOn}}<input type="hidden" name="enabled" value="1">{{end}}
+  <p class="muted">{{len .Rows}} konton visas.</p>
+  <p>
+    <button name="action" value="save">Spara</button>
+    {{if .HasTplate}}<button name="action" value="enable_shown" title="Aktiverar alla konton som visas just nu">Aktivera alla som visas</button>{{end}}
+  </p>
+  <table>
+    <thead><tr><th>Aktiv</th><th>Konto</th><th>Namn</th><th>Typ</th><th></th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td>
+          {{if .InTemplate}}
+            <input type="hidden" name="shown" value="{{.Number}}">
+            {{if .InUse}}<input type="checkbox" checked disabled title="Används: kan inte inaktiveras"><input type="hidden" name="on" value="{{.Number}}">
+            {{else}}<input type="checkbox" name="on" value="{{.Number}}"{{if .Enabled}} checked{{end}}>{{end}}
+          {{else}}<input type="checkbox" checked disabled title="Eget konto">{{end}}
+        </td>
+        <td>{{if .Enabled}}<a href="/c/{{$.P.Company.ID}}/accounts/{{.Number}}">{{.Number}}</a>{{else}}{{.Number}}{{end}}</td>
+        <td{{if not .Enabled}} class="muted"{{end}}>{{.Name}}</td>
+        <td>{{.Type}}</td>
+        <td class="muted">{{if not .InTemplate}}egen{{else if .InUse}}används{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  <p><button name="action" value="save">Spara</button></p>
+</form>
+
+<h2>Nytt eget konto</h2>
+<p class="muted">För konton som inte finns i mallen. Konton i mallen aktiverar du i listan ovan.</p>
+<form method="post" action="/c/{{.P.Company.ID}}/accounts">
+  <label>Nummer <input name="number" value="{{.Form.Number}}" size="6" required></label>
+  <label>Namn <input name="name" value="{{.Form.Name}}" size="40" required></label>
+  <label>Typ
+    <select name="type">
+      <option value="">Enligt kontoklass</option>
+      <option value="T"{{if eq .Form.Type "T"}} selected{{end}}>Tillgång (T)</option>
+      <option value="S"{{if eq .Form.Type "S"}} selected{{end}}>Eget kapital/skuld (S)</option>
+      <option value="I"{{if eq .Form.Type "I"}} selected{{end}}>Intäkt (I)</option>
+      <option value="K"{{if eq .Form.Type "K"}} selected{{end}}>Kostnad (K)</option>
+    </select></label>
+  <button>Lägg till</button>
+</form>
 {{template "foot"}}

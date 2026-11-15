@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"fribok/internal/ledger"
@@ -45,9 +46,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.index)
 	mux.HandleFunc("POST /import", s.importSIE)
 	mux.HandleFunc("GET /c/{id}/{$}", s.company)
+	mux.HandleFunc("POST /companies", s.createCompany)
+	mux.HandleFunc("GET /templates", s.templates)
+	mux.HandleFunc("POST /templates", s.importTemplate)
+	mux.HandleFunc("POST /templates/{id}/delete", s.deleteTemplate)
+	mux.HandleFunc("POST /c/{id}/chart", s.saveChart)
 	mux.HandleFunc("GET /c/{id}/accounts", s.accounts)
+	mux.HandleFunc("POST /c/{id}/accounts", s.createAccount)
+	mux.HandleFunc("GET /c/{id}/accounts/{number}", s.editAccount)
+	mux.HandleFunc("POST /c/{id}/accounts/{number}", s.updateAccount)
+	mux.HandleFunc("POST /c/{id}/accounts/{number}/delete", s.deleteAccount)
 	mux.HandleFunc("GET /c/{id}/vouchers", s.vouchers)
 	mux.HandleFunc("GET /c/{id}/trial", s.trial)
+	mux.HandleFunc("GET /c/{id}/ledger", s.generalLedger)
 	mux.HandleFunc("GET /c/{id}/income", s.statement("income", report.IncomeStatement))
 	mux.HandleFunc("GET /c/{id}/balance", s.statement("balance", report.BalanceSheet))
 	mux.HandleFunc("GET /c/{id}/export.se", s.exportSIE)
@@ -77,12 +88,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	cs, err := s.store.Companies(r.Context())
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	s.render(w, "index.html", map[string]any{"Companies": cs, "Error": r.URL.Query().Get("error")})
+	s.showIndex(w, r, defaultCompanyForm(), r.URL.Query().Get("error"), http.StatusOK)
 }
 
 func (s *Server) importSIE(w http.ResponseWriter, r *http.Request) {
@@ -158,19 +164,6 @@ func (s *Server) company(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "company.html", p)
 }
 
-func (s *Server) accounts(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.load(w, r, false)
-	if !ok {
-		return
-	}
-	as, err := s.store.Accounts(r.Context(), p.Company.ID)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	s.render(w, "accounts.html", map[string]any{"P": p, "Accounts": as})
-}
-
 func (s *Server) vouchers(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.load(w, r, true)
 	if !ok {
@@ -225,7 +218,7 @@ func (s *Server) exportSIE(w http.ResponseWriter, r *http.Request) {
 }
 
 // statement serves a report built from the year's trial balance.
-func (s *Server) statement(path string, build func([]ledger.TrialRow) report.Statement) http.HandlerFunc {
+func (s *Server) statement(path string, build func(cur, prev []ledger.TrialRow) report.Statement) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := s.load(w, r, true)
 		if !ok {
@@ -236,6 +229,35 @@ func (s *Server) statement(path string, build func([]ledger.TrialRow) report.Sta
 			s.fail(w, err)
 			return
 		}
-		s.render(w, "statement.html", map[string]any{"P": p, "S": build(rows), "Path": path})
+		// The previous year is the next older one in the list (newest first).
+		var prevRows []ledger.TrialRow
+		var prev ledger.FiscalYear
+		for i, y := range p.Years {
+			if y.ID == p.Year.ID && i+1 < len(p.Years) {
+				prev = p.Years[i+1]
+				if prevRows, err = s.store.TrialBalance(r.Context(), p.Company.ID, prev.ID); err != nil {
+					s.fail(w, err)
+					return
+				}
+				if prevRows == nil {
+					prevRows = []ledger.TrialRow{}
+				}
+			}
+		}
+		s.render(w, "statement.html", map[string]any{"P": p, "S": build(rows, prevRows), "Prev": prev, "Path": path})
 	}
+}
+
+func (s *Server) generalLedger(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.load(w, r, true)
+	if !ok {
+		return
+	}
+	from, to := strings.TrimSpace(r.URL.Query().Get("from")), strings.TrimSpace(r.URL.Query().Get("to"))
+	accts, err := s.store.GeneralLedger(r.Context(), p.Company.ID, p.Year.ID, from, to)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.render(w, "ledger.html", map[string]any{"P": p, "Accounts": accts, "From": from, "To": to, "Path": "ledger"})
 }

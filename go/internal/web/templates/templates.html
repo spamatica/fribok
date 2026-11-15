@@ -1,0 +1,24 @@
+{{template "head" "Kontoplansmallar"}}
+<nav><a href="/">Företag</a> <a href="/templates">Kontoplansmallar</a></nav>
+<h1>Kontoplansmallar</h1>
+<p class="muted">En mall är en referenslista över konton, till exempel BAS. Varje företag aktiverar de konton det faktiskt använder.</p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Notice}}<p><strong>{{.Notice}}</strong></p>{{end}}
+{{if .Templates}}
+<table>
+<thead><tr><th>Namn</th><th>Typ</th><th class="n">Konton</th><th class="n">Företag</th><th></th></tr></thead>
+<tbody>
+{{range .Templates}}<tr><td>{{.Name}}</td><td>{{.KPType}}</td><td class="n">{{.Accounts}}</td><td class="n">{{.Companies}}</td>
+  <td>{{if eq .Companies 0}}<form method="post" action="/templates/{{.ID}}/delete"><button>Ta bort</button></form>{{else}}<span class="muted">används</span>{{end}}</td></tr>{{end}}
+</tbody>
+</table>
+{{else}}<p class="muted">Inga mallar än.</p>{{end}}
+
+<h2>Importera mall från SIE-fil</h2>
+<p class="muted">Kontoplanen (#KONTO) i filen blir en mall. Saldon och verifikationer i filen ignoreras. Importerar du en hel bokföring från en SIE-fil skapas mallen automatiskt.</p>
+<form method="post" action="/templates" enctype="multipart/form-data">
+  <p><input type="file" name="file" accept=".se,.si,.sie" required></p>
+  <p><label>Namn <input name="name" size="30" placeholder="tomt = filens kontoplanstyp (#KPTYP)"></label></p>
+  <p><button>Importera mall</button></p>
+</form>
+{{template "foot"}}

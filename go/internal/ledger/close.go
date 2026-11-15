@@ -33,21 +33,46 @@ type ClosePlan struct {
 	NextExists   bool
 	Opening      []Opening
 	VoucherLabel string // set when applied and a result voucher was posted
+	// Enabled lists accounts that closing enables from the template because
+	// it needs them (the result accounts and 8999).
+	Enabled []string
 }
 
-// DefaultCloseAccounts returns the first existing of the usual BAS accounts
-// for the year's result (2099, 2069) and for the carried result (2098, 2091).
-// Either may be "" if the chart has none of them.
+// DefaultCloseAccounts proposes the account for the year's result (2099 or
+// 2069) and the one for the carried result (2098 or 2091). Of each pair it
+// prefers the account the company already uses, then an enabled one, then one
+// in the company's template. Either may be "" if none of them exists.
 func (s *Store) DefaultCloseAccounts(ctx context.Context, companyID int64) (result, carry string, err error) {
+	used, err := inUseSet(ctx, s.db, companyID)
+	if err != nil {
+		return "", "", err
+	}
+	enabled, err := s.Accounts(ctx, companyID)
+	if err != nil {
+		return "", "", err
+	}
+	isEnabled := map[string]bool{}
+	for _, a := range enabled {
+		isEnabled[a.Number] = true
+	}
 	pick := func(cands ...string) (string, error) {
 		for _, c := range cands {
-			var one int
-			err := s.db.QueryRowContext(ctx, `SELECT 1 FROM account WHERE company_id=? AND number=?`, companyID, c).Scan(&one)
-			if err == nil {
+			if used[c] {
 				return c, nil
 			}
-			if !errors.Is(err, sql.ErrNoRows) {
+		}
+		for _, c := range cands {
+			if isEnabled[c] {
+				return c, nil
+			}
+		}
+		for _, c := range cands {
+			ok, err := s.accountAvailable(ctx, companyID, c)
+			if err != nil {
 				return "", err
+			}
+			if ok {
+				return c, nil
 			}
 		}
 		return "", nil
@@ -109,16 +134,24 @@ func (s *Store) closeYear(ctx context.Context, companyID, yearID int64, resultAc
 	if fy.LockedUntil >= fy.End {
 		return plan, invalid("Räkenskapsåret %s – %s är redan avslutat", fy.Start, fy.End)
 	}
+	if imp, err := hasImportedSummary(ctx, tx, yearID); err != nil {
+		return plan, err
+	} else if imp {
+		return plan, invalid("Räkenskapsåret består av importerade slutsaldon utan verifikationer och kan inte avslutas")
+	}
 	for _, a := range []struct{ label, num string }{{"årets resultat", resultAcct}, {"balanserat resultat", carryAcct}} {
 		if a.num == "" {
 			return plan, invalid("Ange konto för %s", a.label)
 		}
-		var typ string
-		err := tx.QueryRowContext(ctx, `SELECT type FROM account WHERE company_id=? AND number=?`, companyID, a.num).Scan(&typ)
-		if errors.Is(err, sql.ErrNoRows) {
-			return plan, invalid("Kontot %s (%s) finns inte i kontoplanen", a.num, a.label)
-		}
+		newly, err := enableAccount(ctx, tx, companyID, a.num)
 		if err != nil {
+			return plan, invalid("Kontot %s (%s) finns inte i kontoplanen eller dess mall", a.num, a.label)
+		}
+		if newly {
+			plan.Enabled = append(plan.Enabled, a.num)
+		}
+		var typ string
+		if err := tx.QueryRowContext(ctx, `SELECT type FROM account WHERE company_id=? AND number=?`, companyID, a.num).Scan(&typ); err != nil {
 			return plan, err
 		}
 		if typ != "S" {
@@ -165,21 +198,12 @@ func (s *Store) closeYear(ctx context.Context, companyID, yearID int64, resultAc
 	}
 	plan.Result = -pl
 	if plan.Result != 0 {
-		known := false
-		for _, r := range rows {
-			if r.Account == "8999" {
-				known = true
-			}
+		newly, err := enableAccount(ctx, tx, companyID, "8999")
+		if err != nil {
+			return plan, invalid("Kontot 8999 (Årets resultat) finns inte i kontoplanen eller dess mall")
 		}
-		if !known {
-			var one int
-			err := tx.QueryRowContext(ctx, `SELECT 1 FROM account WHERE company_id=? AND number='8999'`, companyID).Scan(&one)
-			if errors.Is(err, sql.ErrNoRows) {
-				return plan, invalid("Kontot 8999 (Årets resultat) finns inte i kontoplanen")
-			}
-			if err != nil {
-				return plan, err
-			}
+		if newly {
+			plan.Enabled = append(plan.Enabled, "8999")
 		}
 		v, err := addVoucher(ctx, tx, companyID, yearID, NewVoucher{
 			Series: closeSeries, Date: fy.End, Text: "Årets resultat",

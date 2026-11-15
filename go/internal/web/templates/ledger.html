@@ -1,0 +1,26 @@
+{{template "head" "Huvudbok"}}
+{{template "nav" .P}}
+<h1>Huvudbok</h1>
+{{template "yearpicker" .}}
+<form method="get" action="/c/{{.P.Company.ID}}/ledger">
+  <input type="hidden" name="year" value="{{.P.Year.ID}}">
+  <label>Från konto <input name="from" value="{{.From}}" size="6"></label>
+  <label>Till konto <input name="to" value="{{.To}}" size="6"></label>
+  <button>Visa</button>
+</form>
+{{range .Accounts}}
+<h3>{{.Account}} {{.Name}}</h3>
+<table>
+<thead><tr><th>Datum</th><th>Ver.</th><th>Text</th><th class="n">Debet</th><th class="n">Kredit</th><th class="n">Saldo</th></tr></thead>
+<tbody>
+<tr class="muted"><td colspan="5">Ingående balans</td><td class="n">{{kr .Opening}}</td></tr>
+{{range .Entries}}<tr><td>{{.Date}}</td>
+  <td><a href="/c/{{$.P.Company.ID}}/vouchers?year={{$.P.Year.ID}}#v{{.VoucherID}}">{{.VoucherName}}</a></td><td>{{.Text}}</td>
+  <td class="n">{{if gt .Amount 0}}{{kr .Amount}}{{end}}</td>
+  <td class="n">{{if lt .Amount 0}}{{kr (neg .Amount)}}{{end}}</td>
+  <td class="n">{{kr .Balance}}</td></tr>{{end}}
+</tbody>
+<tfoot><tr><td colspan="3">Utgående balans</td><td class="n">{{kr .Debit}}</td><td class="n">{{kr .Credit}}</td><td class="n">{{kr .Closing}}</td></tr></tfoot>
+</table>
+{{else}}<p class="muted">Inga konton med saldo eller transaktioner.</p>{{end}}
+{{template "foot"}}

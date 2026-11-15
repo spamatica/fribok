@@ -68,6 +68,21 @@ func TestCloseYearBooksResultAndCarriesBalances(t *testing.T) {
 		plan.NextStart != "2026-01-01" || plan.NextEnd != "2026-12-31" {
 		t.Errorf("plan = %+v", plan)
 	}
+	// None of 2098, 2099 and 8999 is used in the file; closing enables them
+	// from the template, and the preview does not keep that.
+	if strings.Join(plan.Enabled, ",") != "2099,2098,8999" {
+		t.Errorf("accounts to enable = %v", plan.Enabled)
+	}
+	if rows, _ := s.Chart(ctx, cid); func() bool {
+		for _, r := range rows {
+			if r.Number == "2099" && r.Enabled {
+				return true
+			}
+		}
+		return false
+	}() {
+		t.Error("preview enabled an account")
+	}
 	if ys, _ := s.Years(ctx, cid); len(ys) != 1 {
 		t.Fatalf("preview created a year")
 	}
@@ -208,7 +223,13 @@ func TestCloseRealFileWithResultAlreadyBooked(t *testing.T) {
 			cur = y
 		}
 	}
-	plan, err := s.CloseYear(ctx, cid, cur.ID, "2069", "2098")
+	// This company carries its result on 2069 (it is used), so that is the default
+	// even though 2099 is in the chart too; 2098 is only in the template.
+	if r, c, err := s.DefaultCloseAccounts(ctx, cid); err != nil || r != "2069" || c != "2098" {
+		t.Errorf("default accounts = %q, %q, %v; want 2069, 2098", r, c, err)
+	}
+	// 2098 is not used in the file: closing enables it from the template.
+	plan, err := s.CloseYear(ctx, cid, cur.ID, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

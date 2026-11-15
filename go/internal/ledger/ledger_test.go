@@ -165,9 +165,18 @@ func TestExportRoundTrip(t *testing.T) {
 	if len(again.Years) != len(orig.Years) {
 		t.Errorf("years: %d vs %d", len(again.Years), len(orig.Years))
 	}
-	for i := range orig.Accounts {
-		if again.Accounts[i].Number != orig.Accounts[i].Number || again.Accounts[i].Name != orig.Accounts[i].Name {
-			t.Fatalf("account %d differs: %+v vs %+v", i, again.Accounts[i], orig.Accounts[i])
+	// Only the accounts the file uses are enabled, so only those are exported.
+	used := usedAccounts(orig)
+	if len(again.Accounts) != len(used) || len(used) == 0 {
+		t.Errorf("exported %d accounts, the file uses %d", len(again.Accounts), len(used))
+	}
+	origName := map[string]string{}
+	for _, a := range orig.Accounts {
+		origName[a.Number] = a.Name
+	}
+	for _, a := range again.Accounts {
+		if !used[a.Number] || a.Name != origName[a.Number] {
+			t.Fatalf("exported account %+v does not match the file", a)
 		}
 	}
 	// Compare balances ignoring zero entries: the store does not keep
@@ -181,8 +190,9 @@ func TestExportRoundTrip(t *testing.T) {
 		}
 		return m
 	}
-	// Year 0 is the only year with vouchers, so only there UB/RES are comparable.
-	cur := map[int]bool{0: true}
+	// The previous year has no vouchers; its imported closing balances must
+	// survive the round trip as well.
+	cur := map[int]bool{0: true, -1: true}
 	all := map[int]bool{0: true, -1: true}
 	for _, c := range []struct {
 		name      string
@@ -215,4 +225,186 @@ func TestExportRoundTrip(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestGeneralLedger(t *testing.T) {
+	ctx := context.Background()
+	s, cid, cur, _ := setup(t)
+	if _, err := s.AddVoucher(ctx, cid, cur.ID, NewVoucher{Series: "V", Date: "2025-02-01", Text: "avgift",
+		Lines: []Line{{Account: "6570", Amount: 400, Text: "swish"}, {Account: "1930", Amount: -400}}}); err != nil {
+		t.Fatal(err)
+	}
+	gl, err := s.GeneralLedger(ctx, cid, cur.ID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bank LedgerAccount
+	for _, a := range gl {
+		if a.Account == "1930" {
+			bank = a
+		}
+	}
+	// V1 +100.00 (10000 öre) then V2 -4.00.
+	if len(bank.Entries) != 2 || bank.Entries[0].VoucherName != "V1" || bank.Entries[1].VoucherName != "V2" ||
+		bank.Entries[1].Balance != 9600 || bank.Closing != 9600 {
+		t.Errorf("bank = %+v", bank)
+	}
+	for _, a := range gl {
+		if a.Account == "6570" && (len(a.Entries) != 1 || a.Entries[0].Text != "avgift – swish") {
+			t.Errorf("6570 = %+v", a)
+		}
+	}
+	// Range filter.
+	gl, _ = s.GeneralLedger(ctx, cid, cur.ID, "3000", "6999")
+	if len(gl) != 2 || gl[0].Account != "3999" || gl[1].Account != "6570" {
+		t.Errorf("filtered = %+v", gl)
+	}
+}
+
+// For the real file, every account's running balance must end at the closing
+// balance of the trial balance, and the entries must sum to the turnover.
+func TestGeneralLedgerRealFile(t *testing.T) {
+	files, _ := filepath.Glob("../../../test_files/*.se")
+	if len(files) == 0 {
+		t.Skip("no SIE file in test_files")
+	}
+	f, _ := os.Open(files[0])
+	defer f.Close()
+	doc, err := sie.Parse(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	s := mustOpen(t)
+	cid, err := s.ImportSIE(ctx, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ys, _ := s.Years(ctx, cid)
+	var cur FiscalYear
+	for _, y := range ys {
+		if y.Index == 0 {
+			cur = y
+		}
+	}
+	gl, err := s.GeneralLedger(ctx, cid, cur.ID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := 0
+	for _, a := range gl {
+		bal := a.Opening
+		var net money.Ore
+		for _, e := range a.Entries {
+			bal += e.Amount
+			net += e.Amount
+			if e.Balance != bal {
+				t.Fatalf("%s: running balance %s, want %s", a.Account, e.Balance, bal)
+			}
+			entries++
+		}
+		if bal != a.Closing || net != a.Debit-a.Credit {
+			t.Errorf("%s: closing %s vs %s, net %s vs %s", a.Account, bal, a.Closing, net, a.Debit-a.Credit)
+		}
+	}
+	if entries != 163 { // #TRANS records in the file
+		t.Errorf("%d entries, want 163", entries)
+	}
+}
+
+// The previous year of the real file has only #UB/#RES; they must be shown by
+// TrialBalance as imported closing balances.
+func TestImportedClosingBalancesOfEarlierYear(t *testing.T) {
+	files, _ := filepath.Glob("../../../test_files/*.se")
+	if len(files) == 0 {
+		t.Skip("no SIE file in test_files")
+	}
+	f, _ := os.Open(files[0])
+	defer f.Close()
+	doc, err := sie.Parse(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	s := mustOpen(t)
+	cid, err := s.ImportSIE(ctx, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ys, _ := s.Years(ctx, cid)
+	var prev FiscalYear
+	for _, y := range ys {
+		if y.Index == -1 {
+			prev = y
+		}
+	}
+	rows, err := s.TrialBalance(ctx, cid, prev.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]money.Ore{}
+	var sum money.Ore
+	for _, r := range rows {
+		if !r.Imported || r.Debit != 0 || r.Credit != 0 {
+			t.Fatalf("row %+v should be marked imported", r)
+		}
+		got[r.Account] = r.Closing
+		sum += r.Closing
+	}
+	n := 0
+	for _, set := range [][]sie.Balance{doc.UB, doc.Res} {
+		for _, b := range set {
+			if b.YearIndex != -1 {
+				continue
+			}
+			n++
+			if got[b.Account] != b.Amount {
+				t.Errorf("%s: %s, want %s", b.Account, got[b.Account], b.Amount)
+			}
+		}
+	}
+	if n == 0 || n != len(got) {
+		t.Errorf("%d expected entries, %d rows", n, len(got))
+	}
+	if sum != 0 {
+		t.Errorf("imported balances sum to %s, want 0", sum)
+	}
+	// Such a year has no transactions to list.
+	gl, _ := s.GeneralLedger(ctx, cid, prev.ID, "", "")
+	if len(gl) != 0 {
+		t.Errorf("general ledger of a year without transactions has %d accounts", len(gl))
+	}
+}
+
+func TestYearWithOnlyImportedBalancesIsReadOnly(t *testing.T) {
+	doc, err := sie.Parse(strings.NewReader(`#FNAMN "X"
+#RAR 0 20250101 20251231
+#RAR -1 20240101 20241231
+#KONTO 1930 "Bank"
+#KONTO 2010 "EK"
+#KONTO 2098 "Balanserat"
+#KONTO 2099 "Resultat"
+#UB -1 1930 50.00
+#UB -1 2010 -50.00
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	s := mustOpen(t)
+	cid, err := s.ImportSIE(ctx, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ys, _ := s.Years(ctx, cid)
+	var prev FiscalYear
+	for _, y := range ys {
+		if y.Index == -1 {
+			prev = y
+		}
+	}
+	_, err = s.AddVoucher(ctx, cid, prev.ID, NewVoucher{Series: "V", Date: "2024-05-01", Text: "x", Lines: twoLines(1)})
+	wantInvalid(t, err, "importerade slutsaldon")
+	_, err = s.CloseYear(ctx, cid, prev.ID, "2099", "2098")
+	wantInvalid(t, err, "importerade slutsaldon")
 }

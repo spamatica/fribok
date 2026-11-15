@@ -16,6 +16,7 @@
   {{if .Plan.Result}}<li>Årets resultat <strong>{{kr .Plan.Result}}</strong> bokförs som verifikation i serie BS den {{.Plan.Year.End}}: 8999 mot {{.Plan.ResultAccount}}.</li>
   {{else}}<li>Årets resultat är redan bokfört, ingen resultatverifikation behövs.</li>{{end}}
   <li>{{if .Plan.NextExists}}Räkenskapsåret {{.Plan.NextStart}} – {{.Plan.NextEnd}} finns redan; dess ingående balanser skrivs om.{{else}}Räkenskapsåret {{.Plan.NextStart}} – {{.Plan.NextEnd}} skapas.{{end}}</li>
+  {{if .Plan.Enabled}}<li>Dessa konton aktiveras från mallen eftersom avslutet behöver dem: {{range $i, $a := .Plan.Enabled}}{{if $i}}, {{end}}{{$a}}{{end}}.</li>{{end}}
   <li>Året låses helt. Det kan inte hävas.</li>
 </ul>
 <h3>Ingående balanser {{.Plan.NextStart}}</h3>

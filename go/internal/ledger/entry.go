@@ -102,11 +102,16 @@ func addVoucher(ctx context.Context, tx *sql.Tx, companyID, yearID int64, nv New
 	if err := nv.validate(fy); err != nil {
 		return Voucher{}, err
 	}
+	if imp, err := hasImportedSummary(ctx, tx, yearID); err != nil {
+		return Voucher{}, err
+	} else if imp {
+		return Voucher{}, invalid("Räkenskapsåret består av importerade slutsaldon utan verifikationer och kan inte bokföras i")
+	}
 	for _, l := range nv.Lines {
 		var one int
 		err := tx.QueryRowContext(ctx, `SELECT 1 FROM account WHERE company_id=? AND number=?`, companyID, l.Account).Scan(&one)
 		if errors.Is(err, sql.ErrNoRows) {
-			return Voucher{}, invalid("Kontot %s finns inte i kontoplanen", l.Account)
+			return Voucher{}, invalid("Kontot %s finns inte i kontoplanen (aktivera det under Kontoplan)", l.Account)
 		}
 		if err != nil {
 			return Voucher{}, err
@@ -255,4 +260,14 @@ func (s *Store) LockYear(ctx context.Context, companyID, yearID int64, until str
 		return err
 	}
 	return tx.Commit()
+}
+
+// hasImportedSummary reports whether the year is only known from imported
+// closing balances (it has them and no vouchers).
+func hasImportedSummary(ctx context.Context, q dbtx, yearID int64) (bool, error) {
+	var n int
+	err := q.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM year_summary s WHERE s.fiscal_year_id = ?
+   AND NOT EXISTS (SELECT 1 FROM voucher v WHERE v.fiscal_year_id = s.fiscal_year_id)`, yearID).Scan(&n)
+	return n > 0, err
 }
