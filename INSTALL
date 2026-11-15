@@ -1,28 +1,38 @@
 Fribok, INSTALL file
 
 Build requirements:
-* Java SDK, version 1.7 or greater
-* Apache Maven 2
+* Java JDK (not just a JRE), version 8 or greater. Tested with OpenJDK 21.
+  (JDK 21 is recommended; the old IntelliJ forms plugin may not work with
+  newer versions.)
+* Apache Maven 3.x
 
-The preferred way of building Fribok is using the Maven POM-file.
+On Debian/Ubuntu:
 
-$ mvn assembly:assembly
+$ sudo apt install openjdk-21-jdk maven
+
+Step 1, one-time: install the two bundled artifacts that are not available on
+Maven Central (fonts and help) into your local Maven repository (~/.m2):
+
+$ ./install-local-deps.sh
+
+Step 2, build:
+
+$ mvn -DskipTests package assembly:single
 [output...]
 
-And to run it:
-$ java -jar target/fribok-2.1-SNAPSHOT-jar-with-dependencies.jar
+If your default `java' is newer than 21, point JAVA_HOME to a JDK 21 first:
 
-The above command must be run from the project root directory.
+$ export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+
+And to run it (must be run from the project root directory):
+
+$ java -jar target/fribok-2.2-SNAPSHOT-jar-with-dependencies.jar
 
 NOTE: In case you have problem with missing files from jasperforge.org
 in the build step above you might want to disable the
-jasperreports.org maven repository prior to building. For your
-convenience, we have a settings file for Maven that does just that. In
-case you already have a ~/.m2/settings file you should append the
-contents of m2-settings.xml, if not you can install it by simply:
-
-$ mkdir ~/.m2
-$ cp m2-settings.xml ~/.m2/settings.xml
+jasperreports.org maven repository prior to building. In case you already
+have a ~/.m2/settings.xml you should append the relevant contents, if not
+you can create a minimal one that mirrors only Maven Central.
 
 Other things to try:
 
