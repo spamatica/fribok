@@ -128,6 +128,7 @@ func (v Voucher) Label() string { return fmt.Sprintf("%s%d", v.Series, v.Number)
 
 type TrialRow struct {
 	Account, Name string
+	Type          string // T, S, K or I
 	Opening       money.Ore
 	Debit, Credit money.Ore // credit is positive here
 	Closing       money.Ore
@@ -376,7 +377,11 @@ func (s *Store) Vouchers(ctx context.Context, yearID int64) ([]Voucher, error) {
 // transactions in the year: opening balance, debit and credit turnover and
 // the closing balance (opening + debit - credit).
 func (s *Store) TrialBalance(ctx context.Context, companyID, yearID int64) ([]TrialRow, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return trialBalance(ctx, s.db, companyID, yearID)
+}
+
+func trialBalance(ctx context.Context, q dbtx, companyID, yearID int64) ([]TrialRow, error) {
+	rows, err := q.QueryContext(ctx, `
 WITH t AS (
   SELECT l.account,
          SUM(CASE WHEN l.amount > 0 THEN l.amount ELSE 0 END)  AS d,
@@ -384,7 +389,7 @@ WITH t AS (
     FROM voucher_line l JOIN voucher v ON v.id = l.voucher_id
    WHERE v.fiscal_year_id = ?
    GROUP BY l.account)
-SELECT a.number, a.name, COALESCE(ib.amount, 0), COALESCE(t.d, 0), COALESCE(t.c, 0)
+SELECT a.number, a.name, a.type, COALESCE(ib.amount, 0), COALESCE(t.d, 0), COALESCE(t.c, 0)
   FROM account a
   LEFT JOIN opening_balance ib ON ib.fiscal_year_id = ? AND ib.account = a.number
   LEFT JOIN t ON t.account = a.number
@@ -398,7 +403,7 @@ SELECT a.number, a.name, COALESCE(ib.amount, 0), COALESCE(t.d, 0), COALESCE(t.c,
 	for rows.Next() {
 		var r TrialRow
 		var ib, d, c int64
-		if err := rows.Scan(&r.Account, &r.Name, &ib, &d, &c); err != nil {
+		if err := rows.Scan(&r.Account, &r.Name, &r.Type, &ib, &d, &c); err != nil {
 			return nil, err
 		}
 		r.Opening, r.Debit, r.Credit = money.Ore(ib), money.Ore(d), money.Ore(c)

@@ -1,0 +1,39 @@
+{{template "head" "Avsluta räkenskapsår"}}
+{{template "nav" .P}}
+<h1>Avsluta räkenskapsår</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="get" action="/c/{{.P.Company.ID}}/close">
+  <input type="hidden" name="year" value="{{.YearID}}">
+  <p>
+    <label>Konto för årets resultat <input name="result" value="{{.Result}}" size="6"></label>
+    <label>Balanserat resultat (nytt år) <input name="carry" value="{{.Carry}}" size="6"></label>
+    <button>Förhandsgranska</button>
+  </p>
+</form>
+{{if .Planned}}
+<h2>{{.Plan.Year.Start}} – {{.Plan.Year.End}}</h2>
+<ul>
+  {{if .Plan.Result}}<li>Årets resultat <strong>{{kr .Plan.Result}}</strong> bokförs som verifikation i serie BS den {{.Plan.Year.End}}: 8999 mot {{.Plan.ResultAccount}}.</li>
+  {{else}}<li>Årets resultat är redan bokfört, ingen resultatverifikation behövs.</li>{{end}}
+  <li>{{if .Plan.NextExists}}Räkenskapsåret {{.Plan.NextStart}} – {{.Plan.NextEnd}} finns redan; dess ingående balanser skrivs om.{{else}}Räkenskapsåret {{.Plan.NextStart}} – {{.Plan.NextEnd}} skapas.{{end}}</li>
+  <li>Året låses helt. Det kan inte hävas.</li>
+</ul>
+<h3>Ingående balanser {{.Plan.NextStart}}</h3>
+<table>
+<thead><tr><th>Konto</th><th>Namn</th><th class="n">Debet</th><th class="n">Kredit</th></tr></thead>
+<tbody>
+{{range .Plan.Opening}}<tr><td>{{.Account}}</td><td>{{.Name}}</td>
+  <td class="n">{{if gt .Amount 0}}{{kr .Amount}}{{end}}</td>
+  <td class="n">{{if lt .Amount 0}}{{kr (neg .Amount)}}{{end}}</td></tr>{{end}}
+</tbody>
+</table>
+<p class="muted">Årets resultat enligt kontot {{.Plan.ResultAccount}} flyttas till {{.Plan.CarryAccount}}.</p>
+<form method="post" action="/c/{{.P.Company.ID}}/close">
+  <input type="hidden" name="year" value="{{.YearID}}">
+  <input type="hidden" name="result" value="{{.Result}}">
+  <input type="hidden" name="carry" value="{{.Carry}}">
+  <p><label><input type="checkbox" name="confirm" value="yes" required> Jag har kontrollerat uppgifterna och vill avsluta året.</label></p>
+  <p><button>Avsluta året</button></p>
+</form>
+{{end}}
+{{template "foot"}}

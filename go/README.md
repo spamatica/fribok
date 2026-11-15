@@ -24,6 +24,11 @@ There is no authentication yet: keep it listening on localhost.
 - A posted voucher is never edited or deleted. A mistake is fixed with a
   correction voucher that reverses it (linked to the original, voucher can be
   corrected once), followed by a new voucher.
+- Closing a year (`/c/{id}/close`, with a preview that runs the same code and
+  rolls back): books any result not yet booked as voucher BS1 (8999 against
+  2099 or 2069), creates the next fiscal year if missing, writes its opening
+  balances (the result account's balance moves to 2098 or 2091) and locks the
+  closed year completely.
 - A period can be locked up to a date; the lock can move forward, never back.
 - Schema changes go in `migrations` in `internal/ledger/ledger.go`
   (`schema.sql` is version 0 and is not edited).
@@ -35,7 +40,7 @@ closing balances against the file's own `#UB`/`#RES` records.
 
 ## Not done yet
 General ledger and journal reports, comparison with the previous year in the
-reports, year-end closing (opening balances for a new year), adding accounts
+reports, adding accounts
 and companies without a SIE file, VAT report, SIE dimensions/objects,
 authentication. Imported companies are always new: a second SIE file for the
 same company is not merged.

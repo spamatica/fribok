@@ -258,3 +258,87 @@ func sameOrigin(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+type closePage struct {
+	P       page
+	YearID  int64
+	Plan    ledger.ClosePlan
+	Result  string // account inputs, as typed
+	Carry   string
+	Error   string
+	Planned bool // a plan could be computed
+}
+
+// closeYear serves the preview (GET) and the execution (POST) of year-end
+// closing. The preview runs the same code as the execution, then rolls back.
+func (s *Server) closeYear(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.load(w, r, false)
+	if !ok {
+		return
+	}
+	var get func(string) string
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		get = r.PostForm.Get
+	} else {
+		get = r.URL.Query().Get
+	}
+	yearID, err := strconv.ParseInt(get("year"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad year", http.StatusBadRequest)
+		return
+	}
+	cp := closePage{P: p, YearID: yearID, Result: strings.TrimSpace(get("result")), Carry: strings.TrimSpace(get("carry"))}
+	if cp.Result == "" || cp.Carry == "" {
+		dr, dc, err := s.store.DefaultCloseAccounts(r.Context(), p.Company.ID)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if cp.Result == "" {
+			cp.Result = dr
+		}
+		if cp.Carry == "" {
+			cp.Carry = dc
+		}
+	}
+
+	if r.Method == http.MethodPost && get("confirm") == "yes" {
+		_, err := s.store.CloseYear(r.Context(), p.Company.ID, yearID, cp.Result, cp.Carry)
+		if err == nil {
+			http.Redirect(w, r, fmt.Sprintf("/c/%d/", p.Company.ID), http.StatusSeeOther)
+			return
+		}
+		var ve *ledger.ValidationError
+		if !errors.As(err, &ve) {
+			s.fail(w, err)
+			return
+		}
+		cp.Error = ve.Msg
+	}
+	plan, err := s.store.PlanClose(r.Context(), p.Company.ID, yearID, cp.Result, cp.Carry)
+	cp.Plan = plan
+	status := http.StatusOK
+	if err != nil {
+		var ve *ledger.ValidationError
+		if !errors.As(err, &ve) {
+			s.fail(w, err)
+			return
+		}
+		if cp.Error == "" {
+			cp.Error = ve.Msg
+		}
+		status = http.StatusUnprocessableEntity
+	} else {
+		cp.Planned = true
+	}
+	if r.Method == http.MethodPost && cp.Error == "" {
+		cp.Error = "Bekräfta avslutet med kryssrutan"
+		status = http.StatusUnprocessableEntity
+	}
+	w.WriteHeader(status)
+	s.render(w, "close.html", cp)
+}

@@ -7,7 +7,8 @@
   <a href="/c/{{$.Company.ID}}/vouchers?year={{.ID}}">verifikationer</a>,
   <a href="/c/{{$.Company.ID}}/trial?year={{.ID}}">saldobalans</a>,
   <a href="/c/{{$.Company.ID}}/income?year={{.ID}}">resultaträkning</a>,
-  <a href="/c/{{$.Company.ID}}/balance?year={{.ID}}">balansräkning</a></li>{{end}}
+  <a href="/c/{{$.Company.ID}}/balance?year={{.ID}}">balansräkning</a>{{if lt .LockedUntil .End}},
+  <a href="/c/{{$.Company.ID}}/close?year={{.ID}}">avsluta året</a>{{end}}</li>{{end}}
 </ul>
 <h2>Lås period</h2>
 <p class="muted">Inga verifikationer kan bokföras med datum till och med det låsta datumet. En låsning kan flyttas framåt men inte hävas.</p>

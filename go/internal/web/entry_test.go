@@ -182,3 +182,62 @@ func TestCrossSitePostsAreRefused(t *testing.T) {
 		t.Errorf("expected exactly the imported voucher and one posted:\n%s", list)
 	}
 }
+
+func TestCloseYearFlow(t *testing.T) {
+	c := newClient(t)
+	// Reuse the small books and add the accounts closing needs.
+	src := strings.Replace(smallSIE, `#KONTO 6570`, "#KONTO 2098 \"Balanserat\"\n#KONTO 2099 \"Årets resultat\"\n#KONTO 8999 \"Årets resultat\"\n#KONTO 6570", 1)
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	fw, _ := mw.CreateFormFile("file", "x.se")
+	fw.Write([]byte(src))
+	mw.Close()
+	req, _ := http.NewRequest("POST", c.base+"/import", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if code, b, _ := c.do(req); code != http.StatusSeeOther {
+		t.Fatalf("import: %d %s", code, b)
+	}
+
+	if _, b := c.get("/c/1/"); !strings.Contains(b, "avsluta året") {
+		t.Error("no close link on company page")
+	}
+	code, page := c.get("/c/1/close?year=1")
+	if code != 200 || !strings.Contains(page, "bokförs som verifikation i serie BS") || !strings.Contains(page, "2026-01-01") || !strings.Contains(page, `name="confirm"`) {
+		t.Fatalf("preview: %d\n%s", code, page)
+	}
+	if _, b := c.get("/c/1/vouchers"); strings.Contains(b, "BS1") {
+		t.Fatal("preview posted a voucher")
+	}
+
+	// Without the confirmation nothing happens.
+	if code, b, _ := c.post("/c/1/close", url.Values{"year": {"1"}}, nil); code != 422 || !strings.Contains(b, "Bekräfta") {
+		t.Errorf("unconfirmed: %d", code)
+	}
+	if _, b := c.get("/c/1/vouchers"); strings.Contains(b, "BS1") {
+		t.Fatal("unconfirmed close posted a voucher")
+	}
+	// A bad account is reported on the preview page.
+	if code, b := c.get("/c/1/close?year=1&result=1930&carry=2098"); code != 422 || !strings.Contains(b, "skuld- eller eget kapital") {
+		t.Errorf("bad account: %d", code)
+	}
+
+	code, _, h := c.post("/c/1/close", url.Values{"year": {"1"}, "confirm": {"yes"}}, nil)
+	if code != http.StatusSeeOther || h.Get("Location") != "/c/1/" {
+		t.Fatalf("close: %d %q", code, h.Get("Location"))
+	}
+	_, home := c.get("/c/1/")
+	if !strings.Contains(home, "2026-01-01 – 2026-12-31") || !strings.Contains(home, "låst t.o.m. 2025-12-31") {
+		t.Errorf("home after close:\n%s", home)
+	}
+	if code, b := c.get("/c/1/close?year=1"); code != 422 || !strings.Contains(b, "redan avslutat") {
+		t.Errorf("second close: %d", code)
+	}
+	// The new year's trial balance has the opening balance, and so does the balance sheet.
+	if _, b := c.get("/c/1/balance"); !strings.Contains(b, "1930") || !strings.Contains(b, "100,00") {
+		t.Errorf("balance sheet of the new year:\n%s", b)
+	}
+	_, vs := c.get("/c/1/vouchers?year=1")
+	if !strings.Contains(vs, "BS1") {
+		t.Errorf("closing voucher missing:\n%s", vs)
+	}
+}

@@ -73,12 +73,15 @@ func (nv *NewVoucher) validate(fy FiscalYear) error {
 	return nil
 }
 
-type queryer interface {
+// dbtx is the part of *sql.DB and *sql.Tx that the store needs, so that the
+// same code runs inside or outside a transaction.
+type dbtx interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-func fiscalYear(ctx context.Context, q queryer, companyID, yearID int64) (FiscalYear, error) {
+func fiscalYear(ctx context.Context, q dbtx, companyID, yearID int64) (FiscalYear, error) {
 	fy := FiscalYear{ID: yearID}
 	err := q.QueryRowContext(ctx,
 		`SELECT idx, start_date, end_date, locked_until FROM fiscal_year WHERE id=? AND company_id=?`,

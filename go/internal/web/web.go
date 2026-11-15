@@ -55,6 +55,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /c/{id}/vouchers", s.createVoucher)
 	mux.HandleFunc("POST /c/{id}/vouchers/{vid}/correct", s.correctVoucher)
 	mux.HandleFunc("POST /c/{id}/lock", s.lockYear)
+	mux.HandleFunc("GET /c/{id}/close", s.closeYear)
+	mux.HandleFunc("POST /c/{id}/close", s.closeYear)
 	return sameOrigin(mux)
 }
 
