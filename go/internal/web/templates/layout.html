@@ -13,6 +13,11 @@
   th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   tfoot td { font-weight: 600; }
   .voucher { margin: 1rem 0; }
+  tr.sub td { font-weight: 600; border-top: 1px solid var(--line); }
+  tr.tot td { font-weight: 700; border-top: 2px solid var(--line); }
+  tr.head td { padding-top: 1rem; font-weight: 600; border-bottom: 0; }
+  td.ind { padding-left: 1.5rem; }
+  details.correct { display: inline-block; margin-left: 1rem; }
   .error { color: #c00; }
   .muted { opacity: .65; }
 </style>
@@ -31,6 +36,8 @@
   <a href="/c/{{.Company.ID}}/accounts">Kontoplan</a>
   <a href="/c/{{.Company.ID}}/vouchers">Verifikationer</a>
   <a href="/c/{{.Company.ID}}/trial">Saldobalans</a>
+  <a href="/c/{{.Company.ID}}/income">Resultaträkning</a>
+  <a href="/c/{{.Company.ID}}/balance">Balansräkning</a>
 </nav>
 {{end}}
 

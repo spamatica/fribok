@@ -23,7 +23,9 @@ type Store struct{ db *sql.DB }
 // Open opens (creating if needed) the SQLite database at path.
 // Use ":memory:" for tests.
 func Open(path string) (*Store, error) {
-	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	// Writes use BEGIN IMMEDIATE so that two concurrent voucher inserts
+	// cannot both pick the same number.
+	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_txlock=immediate"
 	if path == ":memory:" {
 		dsn = "file::memory:?_pragma=foreign_keys(1)"
 	}
@@ -38,21 +40,63 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("creating schema: %w", err)
 	}
-	return &Store{db: db}, nil
+	st := &Store{db: db}
+	if err := st.migrate(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrating schema: %w", err)
+	}
+	return st, nil
+}
+
+// migrations are applied in order, once each; PRAGMA user_version records how
+// many have run. schema.sql is version 0 and is never changed: add new
+// statements here instead, so that existing databases are upgraded.
+var migrations = []string{
+	`ALTER TABLE fiscal_year ADD COLUMN locked_until TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE voucher ADD COLUMN corrects_id INTEGER REFERENCES voucher(id);`,
+}
+
+func (s *Store) migrate() error {
+	var v int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
+		return err
+	}
+	for i := v; i < len(migrations); i++ {
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(migrations[i]); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("migration %d: %w", i+1, err)
+		}
+		if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, i+1)); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
 
 type Company struct {
-	ID    int64
-	Name  string
-	OrgNr string
+	ID       int64
+	Name     string
+	OrgNr    string
+	Currency string
+	KPType   string
 }
 
 type FiscalYear struct {
 	ID         int64
 	Index      int
 	Start, End string
+	// LockedUntil is the last locked date (inclusive), or "" if nothing is locked.
+	LockedUntil string
 }
 
 type Account struct {
@@ -72,7 +116,15 @@ type Voucher struct {
 	Date   string
 	Text   string
 	Lines  []Line
+	// CorrectsID/CorrectsLabel: set when this voucher reverses another one.
+	CorrectsID    int64
+	CorrectsLabel string
+	// Corrected: a correction voucher exists for this voucher.
+	Corrected bool
 }
+
+// Label is the voucher identifier as printed on paper, e.g. "V37".
+func (v Voucher) Label() string { return fmt.Sprintf("%s%d", v.Series, v.Number) }
 
 type TrialRow struct {
 	Account, Name string
@@ -211,7 +263,7 @@ func yearFor(years []sie.Year, date string) (int, bool) {
 }
 
 func (s *Store) Companies(ctx context.Context) ([]Company, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, org_nr FROM company ORDER BY name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, org_nr, currency, kp_type FROM company ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +271,7 @@ func (s *Store) Companies(ctx context.Context) ([]Company, error) {
 	var out []Company
 	for rows.Next() {
 		var c Company
-		if err := rows.Scan(&c.ID, &c.Name, &c.OrgNr); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.OrgNr, &c.Currency, &c.KPType); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -229,15 +281,15 @@ func (s *Store) Companies(ctx context.Context) ([]Company, error) {
 
 func (s *Store) Company(ctx context.Context, id int64) (Company, error) {
 	var c Company
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, org_nr FROM company WHERE id=?`, id).
-		Scan(&c.ID, &c.Name, &c.OrgNr)
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, org_nr, currency, kp_type FROM company WHERE id=?`, id).
+		Scan(&c.ID, &c.Name, &c.OrgNr, &c.Currency, &c.KPType)
 	return c, err
 }
 
 // Years returns the company's fiscal years, newest first.
 func (s *Store) Years(ctx context.Context, companyID int64) ([]FiscalYear, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, idx, start_date, end_date FROM fiscal_year WHERE company_id=? ORDER BY start_date DESC`, companyID)
+		`SELECT id, idx, start_date, end_date, locked_until FROM fiscal_year WHERE company_id=? ORDER BY start_date DESC`, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +297,7 @@ func (s *Store) Years(ctx context.Context, companyID int64) ([]FiscalYear, error
 	var out []FiscalYear
 	for rows.Next() {
 		var y FiscalYear
-		if err := rows.Scan(&y.ID, &y.Index, &y.Start, &y.End); err != nil {
+		if err := rows.Scan(&y.ID, &y.Index, &y.Start, &y.End, &y.LockedUntil); err != nil {
 			return nil, err
 		}
 		out = append(out, y)
@@ -275,7 +327,11 @@ func (s *Store) Accounts(ctx context.Context, companyID int64) ([]Account, error
 // ordered by series and number.
 func (s *Store) Vouchers(ctx context.Context, yearID int64) ([]Voucher, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, series, number, date, text FROM voucher WHERE fiscal_year_id=? ORDER BY series, number`, yearID)
+		`SELECT v.id, v.series, v.number, v.date, v.text,
+		        COALESCE(v.corrects_id, 0),
+		        COALESCE((SELECT o.series || o.number FROM voucher o WHERE o.id = v.corrects_id), ''),
+		        EXISTS (SELECT 1 FROM voucher c WHERE c.corrects_id = v.id)
+		   FROM voucher v WHERE v.fiscal_year_id=? ORDER BY v.series, v.number`, yearID)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +339,7 @@ func (s *Store) Vouchers(ctx context.Context, yearID int64) ([]Voucher, error) {
 	byID := map[int64]int{}
 	for rows.Next() {
 		var v Voucher
-		if err := rows.Scan(&v.ID, &v.Series, &v.Number, &v.Date, &v.Text); err != nil {
+		if err := rows.Scan(&v.ID, &v.Series, &v.Number, &v.Date, &v.Text, &v.CorrectsID, &v.CorrectsLabel, &v.Corrected); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -350,4 +406,31 @@ SELECT a.number, a.name, COALESCE(ib.amount, 0), COALESCE(t.d, 0), COALESCE(t.c,
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// Voucher returns one voucher with its lines.
+func (s *Store) Voucher(ctx context.Context, companyID, voucherID int64) (Voucher, error) {
+	var v Voucher
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, series, number, date, text FROM voucher WHERE id=? AND company_id=?`, voucherID, companyID).
+		Scan(&v.ID, &v.Series, &v.Number, &v.Date, &v.Text)
+	if err != nil {
+		return v, err
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT account, amount, text FROM voucher_line WHERE voucher_id=? ORDER BY seq`, voucherID)
+	if err != nil {
+		return v, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var l Line
+		var amt int64
+		if err := rows.Scan(&l.Account, &amt, &l.Text); err != nil {
+			return v, err
+		}
+		l.Amount = money.Ore(amt)
+		v.Lines = append(v.Lines, l)
+	}
+	return v, rows.Err()
 }

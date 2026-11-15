@@ -1,11 +1,14 @@
 package ledger
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"fribok/internal/money"
 	"fribok/internal/sie"
@@ -118,5 +121,98 @@ func TestRealFile(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestExportRoundTrip imports the real file, exports it as SIE, parses the
+// export again and compares everything the store keeps.
+func TestExportRoundTrip(t *testing.T) {
+	files, _ := filepath.Glob("../../../test_files/*.se")
+	if len(files) == 0 {
+		t.Skip("no SIE file in test_files")
+	}
+	f, err := os.Open(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	orig, err := sie.Parse(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	s := mustOpen(t)
+	cid, err := s.ImportSIE(ctx, orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp, err := s.Export(ctx, cid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := sie.Write(&buf, exp, time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	again, err := sie.Parse(&buf)
+	if err != nil {
+		t.Fatalf("exported file does not parse: %v", err)
+	}
+
+	if again.CompanyName != orig.CompanyName || again.OrgNr != orig.OrgNr || again.KPType != orig.KPType || again.SieType != 4 {
+		t.Errorf("header differs: %q/%q/%q vs %q/%q/%q", again.CompanyName, again.OrgNr, again.KPType, orig.CompanyName, orig.OrgNr, orig.KPType)
+	}
+	if len(again.Years) != len(orig.Years) {
+		t.Errorf("years: %d vs %d", len(again.Years), len(orig.Years))
+	}
+	for i := range orig.Accounts {
+		if again.Accounts[i].Number != orig.Accounts[i].Number || again.Accounts[i].Name != orig.Accounts[i].Name {
+			t.Fatalf("account %d differs: %+v vs %+v", i, again.Accounts[i], orig.Accounts[i])
+		}
+	}
+	// Compare balances ignoring zero entries: the store does not keep
+	// zero-valued #RES/#UB rows for accounts without activity.
+	nonzero := func(bs []sie.Balance, onlyYear map[int]bool) map[string]money.Ore {
+		m := map[string]money.Ore{}
+		for _, b := range bs {
+			if b.Amount != 0 && onlyYear[b.YearIndex] {
+				m[fmt.Sprintf("%d/%s", b.YearIndex, b.Account)] = b.Amount
+			}
+		}
+		return m
+	}
+	// Year 0 is the only year with vouchers, so only there UB/RES are comparable.
+	cur := map[int]bool{0: true}
+	all := map[int]bool{0: true, -1: true}
+	for _, c := range []struct {
+		name      string
+		got, want []sie.Balance
+		onlyYears map[int]bool
+	}{{"IB", again.IB, orig.IB, all}, {"UB", again.UB, orig.UB, cur}, {"RES", again.Res, orig.Res, cur}} {
+		g, w := nonzero(c.got, c.onlyYears), nonzero(c.want, c.onlyYears)
+		if len(g) != len(w) {
+			t.Errorf("%s: %d entries vs %d", c.name, len(g), len(w))
+		}
+		for k, v := range w {
+			if g[k] != v {
+				t.Errorf("%s %s: %s vs %s", c.name, k, g[k], v)
+			}
+		}
+	}
+
+	if len(again.Vouchers) != len(orig.Vouchers) {
+		t.Fatalf("vouchers: %d vs %d", len(again.Vouchers), len(orig.Vouchers))
+	}
+	for i, ov := range orig.Vouchers {
+		gv := again.Vouchers[i]
+		if gv.Series != ov.Series || gv.Number != ov.Number || gv.Date != ov.Date || gv.Text != ov.Text || len(gv.Lines) != len(ov.Lines) {
+			t.Fatalf("voucher %d differs: %+v vs %+v", i, gv, ov)
+		}
+		for j, ol := range ov.Lines {
+			gl := gv.Lines[j]
+			if gl.Account != ol.Account || gl.Amount != ol.Amount || gl.Text != ol.Text {
+				t.Fatalf("voucher %s%s line %d differs: %+v vs %+v", ov.Series, ov.Number, j, gl, ol)
+			}
+		}
 	}
 }

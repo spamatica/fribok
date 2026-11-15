@@ -1,0 +1,14 @@
+{{template "head" .S.Title}}
+{{template "nav" .P}}
+<h1>{{.S.Title}}</h1>
+{{template "yearpicker" .}}
+<table>
+{{range .S.Lines}}
+  {{if eq .Kind 0}}<tr class="head"><td colspan="3">{{.Label}}</td></tr>
+  {{else if eq .Kind 1}}<tr><td class="ind">{{.Account}}</td><td>{{.Label}}</td><td class="n">{{kr .Amount}}</td></tr>
+  {{else if eq .Kind 2}}<tr class="sub"><td></td><td>{{.Label}}</td><td class="n">{{kr .Amount}}</td></tr>
+  {{else}}<tr class="tot"><td></td><td>{{.Label}}</td><td class="n">{{kr .Amount}}</td></tr>{{end}}
+{{else}}<tr><td class="muted">Inga bokförda belopp för året.</td></tr>{{end}}
+</table>
+{{if .S.Check}}<p class="error">Balansräkningen balanserar inte: differens {{kr .S.Check}}</p>{{end}}
+{{template "foot"}}

@@ -3,8 +3,18 @@
 <h1>{{.Company.Name}}</h1>
 <p class="muted">{{.Company.OrgNr}}</p>
 <ul>
-{{range .Years}}<li>{{.Start}} – {{.End}}:
+{{range .Years}}<li>{{.Start}} – {{.End}}{{if .LockedUntil}} <span class="muted">(låst t.o.m. {{.LockedUntil}})</span>{{end}}:
   <a href="/c/{{$.Company.ID}}/vouchers?year={{.ID}}">verifikationer</a>,
-  <a href="/c/{{$.Company.ID}}/trial?year={{.ID}}">saldobalans</a></li>{{end}}
+  <a href="/c/{{$.Company.ID}}/trial?year={{.ID}}">saldobalans</a>,
+  <a href="/c/{{$.Company.ID}}/income?year={{.ID}}">resultaträkning</a>,
+  <a href="/c/{{$.Company.ID}}/balance?year={{.ID}}">balansräkning</a></li>{{end}}
 </ul>
+<h2>Lås period</h2>
+<p class="muted">Inga verifikationer kan bokföras med datum till och med det låsta datumet. En låsning kan flyttas framåt men inte hävas.</p>
+<form method="post" action="/c/{{.Company.ID}}/lock">
+  <select name="year">{{range .Years}}<option value="{{.ID}}">{{.Start}} – {{.End}}</option>{{end}}</select>
+  <label>Lås till och med <input type="date" name="until" required></label>
+  <button>Lås</button>
+</form>
+<p><a href="/c/{{.Company.ID}}/export.se">Exportera SIE 4</a></p>
 {{template "foot"}}

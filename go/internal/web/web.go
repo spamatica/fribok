@@ -2,6 +2,7 @@
 package web
 
 import (
+	"bytes"
 	"database/sql"
 	"embed"
 	"errors"
@@ -10,9 +11,11 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"fribok/internal/ledger"
 	"fribok/internal/money"
+	"fribok/internal/report"
 	"fribok/internal/sie"
 )
 
@@ -45,7 +48,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{id}/accounts", s.accounts)
 	mux.HandleFunc("GET /c/{id}/vouchers", s.vouchers)
 	mux.HandleFunc("GET /c/{id}/trial", s.trial)
-	return mux
+	mux.HandleFunc("GET /c/{id}/income", s.statement("income", report.IncomeStatement))
+	mux.HandleFunc("GET /c/{id}/balance", s.statement("balance", report.BalanceSheet))
+	mux.HandleFunc("GET /c/{id}/export.se", s.exportSIE)
+	mux.HandleFunc("GET /c/{id}/vouchers/new", s.newVoucherForm)
+	mux.HandleFunc("POST /c/{id}/vouchers", s.createVoucher)
+	mux.HandleFunc("POST /c/{id}/vouchers/{vid}/correct", s.correctVoucher)
+	mux.HandleFunc("POST /c/{id}/lock", s.lockYear)
+	return sameOrigin(mux)
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
@@ -74,7 +84,6 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) importSIE(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
 	f, _, err := r.FormFile("file")
 	if err != nil {
 		http.Redirect(w, r, "/?error="+template.URLQueryEscaper("no file received"), http.StatusSeeOther)
@@ -191,4 +200,40 @@ func (s *Server) trial(w http.ResponseWriter, r *http.Request) {
 		tot.Closing += x.Closing
 	}
 	s.render(w, "trial.html", map[string]any{"P": p, "Rows": rows, "Total": tot, "Path": "trial"})
+}
+
+func (s *Server) exportSIE(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.load(w, r, false)
+	if !ok {
+		return
+	}
+	doc, err := s.store.Export(r.Context(), p.Company.ID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	var buf bytes.Buffer
+	if err := sie.Write(&buf, doc, time.Now()); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-sie; charset=ibm437")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="SIE4_%d.se"`, p.Company.ID))
+	w.Write(buf.Bytes())
+}
+
+// statement serves a report built from the year's trial balance.
+func (s *Server) statement(path string, build func([]ledger.TrialRow) report.Statement) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := s.load(w, r, true)
+		if !ok {
+			return
+		}
+		rows, err := s.store.TrialBalance(r.Context(), p.Company.ID, p.Year.ID)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		s.render(w, "statement.html", map[string]any{"P": p, "S": build(rows), "Path": path})
+	}
 }

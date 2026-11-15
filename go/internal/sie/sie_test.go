@@ -1,8 +1,10 @@
 package sie
 
 import (
+	"bytes"
 	"strings"
 	"testing"
+	"time"
 )
 
 const sample = `#FLAGGA 0
@@ -76,5 +78,33 @@ func TestParseErrors(t *testing.T) {
 		if _, err := Parse(strings.NewReader(in)); err == nil {
 			t.Errorf("%s: expected error", name)
 		}
+	}
+}
+
+func TestWriteEncodingAndEscaping(t *testing.T) {
+	d := &Document{
+		CompanyName: `Förening "X"`, Currency: "SEK",
+		Years:    []Year{{Index: 0, Start: "2025-01-01", End: "2025-12-31"}},
+		Accounts: []Account{{Number: "1930", Name: "Bank €", Type: "T"}, {Number: "3999", Name: "Intäkt"}},
+		Vouchers: []Voucher{{Series: "V", Number: "1", Date: "2025-01-02", Text: "a\nb", Lines: []Line{
+			{Account: "1930", Amount: 100}, {Account: "3999", Amount: -100, Text: "rad"}}}},
+	}
+	var buf bytes.Buffer
+	if err := Write(&buf, d, time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	raw := buf.Bytes()
+	if !bytes.Contains(raw, []byte("F\x94reningen"[:1])) || !bytes.Contains(raw, []byte("F\x94rening")) {
+		t.Errorf("ö is not CP437 encoded: %q", raw)
+	}
+	if bytes.Contains(raw, []byte("€")) || !bytes.Contains(raw, []byte("Bank ?")) {
+		t.Errorf("unencodable rune not replaced: %q", raw)
+	}
+	back, err := Parse(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.CompanyName != `Förening "X"` || back.Vouchers[0].Text != "a b" || back.Vouchers[0].Lines[1].Text != "rad" {
+		t.Errorf("round trip: %+v", back)
 	}
 }

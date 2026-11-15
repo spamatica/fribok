@@ -46,7 +46,7 @@ func TestImportAndBrowse(t *testing.T) {
 		t.Fatalf("import redirected to %q", loc)
 	}
 
-	for _, path := range []string{"/", loc, loc + "accounts", loc + "vouchers", loc + "trial"} {
+	for _, path := range []string{"/", loc, loc + "accounts", loc + "vouchers", loc + "trial", loc + "income", loc + "balance", loc + "export.se"} {
 		r, err := client.Get(ts.URL + path)
 		if err != nil {
 			t.Fatal(err)
@@ -56,7 +56,11 @@ func TestImportAndBrowse(t *testing.T) {
 		if r.StatusCode != 200 {
 			t.Errorf("%s: status %d: %s", path, r.StatusCode, b)
 		}
-		if !strings.Contains(string(b), "</html>") {
+		if strings.HasSuffix(path, ".se") {
+			if !bytes.HasPrefix(b, []byte("#FLAGGA 0")) || !bytes.Contains(b, []byte("#VER ")) {
+				t.Errorf("%s: not a SIE file", path)
+			}
+		} else if !strings.Contains(string(b), "</html>") {
 			t.Errorf("%s: page not rendered completely", path)
 		}
 	}

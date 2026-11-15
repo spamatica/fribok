@@ -2,9 +2,20 @@
 {{template "nav" .P}}
 <h1>Verifikationer</h1>
 {{template "yearpicker" .}}
+{{if .P.Year.LockedUntil}}<p class="muted">Låst till och med {{.P.Year.LockedUntil}}.</p>{{end}}
+<p><a href="/c/{{.P.Company.ID}}/vouchers/new?year={{.P.Year.ID}}">Ny verifikation</a></p>
 {{range .Vouchers}}
-<div class="voucher">
+<div class="voucher" id="v{{.ID}}">
   <strong>{{.Series}}{{.Number}}</strong> {{.Date}} – {{.Text}}
+  {{if .CorrectsID}}<span class="muted">(rättar {{.CorrectsLabel}})</span>{{end}}
+  {{if .Corrected}}<span class="muted">(rättad)</span>{{else}}
+  <details class="correct"><summary>Rätta</summary>
+    <form method="post" action="/c/{{$.P.Company.ID}}/vouchers/{{.ID}}/correct">
+      <label>Datum <input type="date" name="date" value="{{.Date}}" required></label>
+      <label>Anledning <input name="reason" size="40" required></label>
+      <button>Skapa rättelse</button>
+    </form>
+  </details>{{end}}
   <table>
     {{range .Lines}}
     <tr><td>{{.Account}}</td><td class="muted">{{.Text}}</td>
