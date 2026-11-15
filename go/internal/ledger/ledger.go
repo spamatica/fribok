@@ -85,6 +85,19 @@ var migrations = []string{
 	   (SELECT t.id FROM chart_template t WHERE t.name LIKE 'Kontoplan för företag ' || company.id || ' (%');
 	 INSERT INTO template_account (template_id, number, name, type)
 	   SELECT c.template_id, a.number, a.name, a.type FROM account a JOIN company c ON c.id = a.company_id;`,
+	// Log of deleted vouchers (only the latest voucher can be deleted, and it is kept here).
+	`CREATE TABLE deleted_voucher (
+	    id         INTEGER PRIMARY KEY,
+	    company_id INTEGER NOT NULL REFERENCES company(id) ON DELETE CASCADE,
+	    series     TEXT NOT NULL,
+	    number     INTEGER NOT NULL,
+	    date       TEXT NOT NULL,
+	    text       TEXT NOT NULL,
+	    lines      TEXT NOT NULL,
+	    corrects   TEXT NOT NULL DEFAULT '',
+	    reason     TEXT NOT NULL DEFAULT '',
+	    deleted_at TEXT NOT NULL
+	 );`,
 }
 
 func (s *Store) migrate() error {

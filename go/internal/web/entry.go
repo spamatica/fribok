@@ -13,7 +13,8 @@ import (
 	"fribok/internal/money"
 )
 
-const minFormRows = 8
+// The form starts with four rows; more are added as needed.
+const minFormRows = 4
 
 type formRow struct{ Account, Debit, Credit, Text string }
 
@@ -27,12 +28,13 @@ type voucherForm struct {
 	Accounts []ledger.Account
 	Error    string
 	Notice   string
+	Blank    formRow // an empty row, for the template that adds rows
 }
 
 func padRows(rows []formRow) []formRow {
 	n := minFormRows
-	if len(rows)+2 > n {
-		n = len(rows) + 2
+	if len(rows)+1 > n { // always at least one empty row to type in
+		n = len(rows) + 1
 	}
 	for len(rows) < n {
 		rows = append(rows, formRow{})
@@ -341,4 +343,45 @@ func (s *Server) closeYear(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(status)
 	s.render(w, "close.html", cp)
+}
+
+// deleteVoucher deletes the most recently posted voucher (see ledger.DeleteLastVoucher).
+func (s *Server) deleteVoucher(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.load(w, r, false)
+	if !ok {
+		return
+	}
+	vid, err := strconv.ParseInt(r.PathValue("vid"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	yearID, err := s.store.DeleteLastVoucher(r.Context(), p.Company.ID, vid, r.PostForm.Get("reason"))
+	if err != nil {
+		if msg, ok := validationMsg(err); ok {
+			http.Error(w, msg, http.StatusUnprocessableEntity)
+			return
+		}
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/c/%d/vouchers?year=%d&notice=%s", p.Company.ID, yearID,
+		url.QueryEscape("Verifikationen raderades och finns kvar i loggen över raderade verifikationer.")), http.StatusSeeOther)
+}
+
+func (s *Server) deletedVouchers(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.load(w, r, false)
+	if !ok {
+		return
+	}
+	log, err := s.store.DeletedVouchers(r.Context(), p.Company.ID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.render(w, "deleted.html", map[string]any{"P": p, "Log": log})
 }

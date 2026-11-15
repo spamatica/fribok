@@ -14,7 +14,7 @@
 <p class="muted">Inga verifikationer kan bokföras med datum till och med det låsta datumet. En låsning kan flyttas framåt men inte hävas.</p>
 <form method="post" action="/c/{{.Company.ID}}/lock">
   <select name="year">{{range .Years}}<option value="{{.ID}}">{{.Start}} – {{.End}}</option>{{end}}</select>
-  <label>Lås till och med <input type="date" name="until" required></label>
+  <label>Lås till och med <input name="until" size="10" maxlength="10" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" title="Datum som yyyy-mm-dd" inputmode="numeric" autocomplete="off" required></label>
   <button>Lås</button>
 </form>
 <p><a href="/c/{{.Company.ID}}/export.se">Exportera SIE 4</a></p>

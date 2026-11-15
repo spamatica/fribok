@@ -3,19 +3,35 @@
 <h1>Verifikationer</h1>
 {{template "yearpicker" .}}
 {{if .P.Year.LockedUntil}}<p class="muted">Låst till och med {{.P.Year.LockedUntil}}.</p>{{end}}
-<p><a href="/c/{{.P.Company.ID}}/vouchers/new?year={{.P.Year.ID}}">Ny verifikation</a></p>
+{{if .Notice}}<p><strong>{{.Notice}}</strong></p>{{end}}
+<p><a href="/c/{{.P.Company.ID}}/vouchers/new?year={{.P.Year.ID}}">Ny verifikation</a>
+   · <a href="/c/{{.P.Company.ID}}/deleted">Raderade verifikationer</a></p>
 {{range .Vouchers}}
 <div class="voucher" id="v{{.ID}}">
-  <strong>{{.Series}}{{.Number}}</strong> {{.Date}} – {{.Text}}
-  {{if .CorrectsID}}<span class="muted">(rättar {{.CorrectsLabel}})</span>{{end}}
-  {{if .Corrected}}<span class="muted">(rättad)</span>{{else}}
-  <details class="correct"><summary>Rätta</summary>
-    <form method="post" action="/c/{{$.P.Company.ID}}/vouchers/{{.ID}}/correct">
-      <label>Datum <input type="date" name="date" value="{{.Date}}" required></label>
-      <label>Anledning <input name="reason" size="40" required></label>
-      <button>Skapa rättelse</button>
-    </form>
-  </details>{{end}}
+  <div class="vhead">
+    <strong>{{.Series}}{{.Number}}</strong> {{.Date}} – {{.Text}}
+    {{if .CorrectsID}}<span class="muted">(rättar {{.CorrectsLabel}})</span>{{end}}
+    {{if .Corrected}}<span class="muted">(rättad)</span>{{end}}
+  </div>
+  {{if not .Corrected}}
+  <details class="correct">
+    <summary class="btn"><span class="lbl-open">Rätta</span><span class="lbl-close">Stäng</span></summary>
+    <div class="panel">
+      <form method="post" action="/c/{{$.P.Company.ID}}/vouchers/{{.ID}}/correct">
+        <label>Datum <input name="date" value="{{.Date}}" size="10" maxlength="10" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" required></label>
+        <label>Anledning <input name="reason" required></label>
+        <button>Skapa rättelse</button>
+      </form>
+      {{if eq .ID $.DeletableID}}
+      <form class="delete" method="post" action="/c/{{$.P.Company.ID}}/vouchers/{{.ID}}/delete">
+        <p class="muted">Senast bokförda verifikationen kan raderas. Den sparas i loggen över raderade verifikationer.</p>
+        <label>Anledning (valfritt) <input name="reason" maxlength="200"></label>
+        <button class="danger" onclick="return confirm('Radera verifikationen? Den sparas i loggen över raderade verifikationer.')">Radera verifikationen</button>
+      </form>
+      {{end}}
+    </div>
+  </details>
+  {{end}}
   <table>
     {{range .Lines}}
     <tr><td>{{.Account}}</td><td class="muted">{{.Text}}</td>
@@ -25,4 +41,5 @@
   </table>
 </div>
 {{else}}<p class="muted">Inga verifikationer för året.</p>{{end}}
+<script src="/static/voucher-list.js"></script>
 {{template "foot"}}

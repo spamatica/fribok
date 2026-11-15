@@ -5,19 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.}} – Fribok</title>
 <style>
-  :root { color-scheme: light dark; --line: #8884; }
+  :root { color-scheme: light dark; --line: #8884; --card: #88888814; --border: #8888; }
   body { font: 15px/1.5 system-ui, sans-serif; max-width: 62rem; margin: 0 auto; padding: 1rem; }
   nav a { margin-right: 1rem; }
   table { border-collapse: collapse; width: 100%; }
   th, td { padding: .2rem .6rem; border-bottom: 1px solid var(--line); text-align: left; }
   th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   tfoot td { font-weight: 600; }
-  .voucher { margin: 1rem 0; }
+  .voucher { margin: 1rem 0; padding: .6rem .9rem; border: 1px solid var(--border); border-radius: 6px; background: var(--card); }
+  .voucher table { margin-top: .4rem; }
+  .voucher tr:last-child td { border-bottom: 0; }
+  button, summary.btn { font: inherit; padding: .2rem .75rem; border: 1px solid var(--border); border-radius: 5px; background: var(--card); color: inherit; cursor: pointer; }
+  button:hover, summary.btn:hover { background: #88888833; }
+  summary.btn { display: inline-block; list-style: none; }
+  summary.btn::-webkit-details-marker { display: none; }
+  details[open] > summary.btn { background: #88888833; }
   tr.sub td { font-weight: 600; border-top: 1px solid var(--line); }
   tr.tot td { font-weight: 700; border-top: 2px solid var(--line); }
   tr.head td { padding-top: 1rem; font-weight: 600; border-bottom: 0; }
   td.ind { padding-left: 1.5rem; }
-  details.correct { display: inline-block; margin-left: 1rem; }
+  .voucher { position: relative; }
+  .vhead { padding-right: 6.5rem; min-height: 1.8rem; }
+  details.correct { position: absolute; top: .5rem; right: .7rem; }
+  details.correct:not([open]) .lbl-close, details.correct[open] .lbl-open { display: none; }
+  details.correct .panel { position: absolute; right: 0; top: calc(100% + .35rem); z-index: 5; width: min(22rem, 80vw);
+    padding: .7rem .8rem; background: Canvas; color: CanvasText; border: 1px solid var(--border);
+    border-radius: 6px; box-shadow: 0 4px 14px #0004; }
+  .panel form.delete { margin-top: .8rem; padding-top: .7rem; border-top: 1px solid var(--border); }
+  button.danger { border-color: #c00; color: #c00; }
+  button.danger:hover { background: #cc000022; }
+  .panel label { display: block; margin-bottom: .5rem; }
+  .panel input { display: block; width: 100%; box-sizing: border-box; }
+  .ac { position: relative; white-space: nowrap; }
+  .ac-list { position: absolute; left: 0; top: 100%; z-index: 10; min-width: 18rem; max-height: 15rem; overflow: auto;
+    margin: 0; padding: .2rem 0; list-style: none; background: Canvas; color: CanvasText;
+    border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 14px #0004; }
+  .ac-list li { padding: .2rem .7rem; cursor: pointer; white-space: nowrap; }
+  .ac-list li.sel { background: Highlight; color: HighlightText; }
+  .acctname { font-size: .85em; opacity: .7; margin-left: .5rem; }
   .error { color: #c00; }
   .muted { opacity: .65; }
 </style>

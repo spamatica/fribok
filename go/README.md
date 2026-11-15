@@ -35,6 +35,17 @@ enabled account that is not in the template is a *custom* account.
 - Databases from before templates are migrated: each company gets a template
   made from its existing accounts, all enabled.
 
+## Voucher form keyboard
+Focus starts in the date field. Enter moves to the next field (Ctrl+Enter
+books). In an account field, Enter also fills in the amount that balances the
+voucher in the opposite column (after a debit of 200 the next row gets a
+credit of 200). Enter in a debit field skips the credit column. Enter or Tab
+in the last field of the last row adds a row; the form starts with four.
+Account fields suggest accounts, best match first (number, then name start,
+then a word start, then anywhere), with the first suggestion preselected for
+Tab or Enter. The scripts are in `internal/web/static/`; their logic is
+tested through a JS engine in `picker_test.go`.
+
 ## Bookkeeping rules enforced
 - Vouchers must balance, have at least two lines, use known accounts and a
   date inside the chosen fiscal year.
@@ -47,6 +58,11 @@ enabled account that is not in the template is a *custom* account.
   2099 or 2069), creates the next fiscal year if missing, writes its opening
   balances (the result account's balance moves to 2098 or 2091) and locks the
   closed year completely.
+- Deleting a voucher is a narrow exception, for undoing a slip: only the most
+  recently posted voucher of the company, never in a locked period. The
+  voucher is moved to a log of deleted vouchers (`/c/{id}/deleted`) with time
+  and an optional reason, and its number is reused so numbering stays
+  gap-free.
 - A period can be locked up to a date; the lock can move forward, never back.
 - Schema changes go in `migrations` in `internal/ledger/ledger.go`
   (`schema.sql` is version 0 and is not edited).

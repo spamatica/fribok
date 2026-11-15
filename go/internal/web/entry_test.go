@@ -103,7 +103,7 @@ func TestVoucherEntryFlow(t *testing.T) {
 	c := newClient(t)
 	c.importSmall()
 
-	if code, body := c.get("/c/1/vouchers/new"); code != 200 || !strings.Contains(body, `name="acct"`) || !strings.Contains(body, `<option value="6570">`) {
+	if code, body := c.get("/c/1/vouchers/new"); code != 200 || !strings.Contains(body, `name="acct"`) || !strings.Contains(body, `data-n="6570"`) {
 		t.Fatalf("form: %d", code)
 	}
 
@@ -371,5 +371,74 @@ func TestTemplatesChartAndCompanies(t *testing.T) {
 	}
 	if code, _, _ := c.post("/templates/2/delete", url.Values{}, nil); code != http.StatusSeeOther {
 		t.Errorf("delete unused template: %d", code)
+	}
+}
+
+func TestDeleteLastVoucherFlow(t *testing.T) {
+	c := newClient(t)
+	c.importSmall()
+	good := func(text string) {
+		t.Helper()
+		if code, b, _ := c.post("/c/1/vouchers", postedForm("2025-03-01", text,
+			[4]string{"6570", "10", "", ""}, [4]string{"1930", "", "10", ""}), nil); code != http.StatusSeeOther {
+			t.Fatalf("post %s: %d %s", text, code, b)
+		}
+	}
+	good("första") // V2
+	good("andra")  // V3, posted last
+
+	// Only the last voucher offers deletion.
+	_, page := c.get("/c/1/vouchers")
+	if n := strings.Count(page, `/delete"`); n != 1 || !strings.Contains(page, `/c/1/vouchers/3/delete"`) || !strings.Contains(page, "Radera verifikationen") {
+		t.Errorf("delete forms on the page: %d\n", n)
+	}
+	// Deleting an earlier one is refused and changes nothing.
+	if code, b, _ := c.post("/c/1/vouchers/2/delete", url.Values{}, nil); code != 422 || !strings.Contains(b, "Bara den senast bokförda") {
+		t.Errorf("delete non-last: %d %s", code, b)
+	}
+	// Cross-site posts are refused like all others.
+	if code, _, _ := c.post("/c/1/vouchers/3/delete", url.Values{}, map[string]string{"Origin": "http://evil.example"}); code != http.StatusForbidden {
+		t.Errorf("cross-site delete: %d", code)
+	}
+	if _, p := c.get("/c/1/vouchers"); !strings.Contains(p, "andra") {
+		t.Fatal("voucher vanished after refused deletes")
+	}
+
+	code, _, h := c.post("/c/1/vouchers/3/delete", url.Values{"reason": {"fel konto"}}, nil)
+	if code != http.StatusSeeOther || !strings.HasPrefix(h.Get("Location"), "/c/1/vouchers?year=1&notice=") {
+		t.Fatalf("delete: %d %q", code, h.Get("Location"))
+	}
+	_, page = c.get(h.Get("Location"))
+	if !strings.Contains(page, "Verifikationen raderades") || strings.Contains(page, "andra") || !strings.Contains(page, `/c/1/vouchers/2/delete"`) {
+		t.Errorf("page after delete:\n%s", page)
+	}
+	// The log has it, with reason and lines.
+	_, logPage := c.get("/c/1/deleted")
+	for _, want := range []string{"V3", "andra", "fel konto", "6570", "10,00"} {
+		if !strings.Contains(logPage, want) {
+			t.Errorf("log lacks %q:\n%s", want, logPage)
+		}
+	}
+	// The number is reused.
+	good("tredje")
+	if _, p := c.get("/c/1/vouchers"); !strings.Contains(p, "<strong>V3</strong> 2025-03-01 – tredje") {
+		t.Errorf("number V3 not reused:\n%s", p)
+	}
+
+	// A locked period cannot be deleted from, and the button is gone.
+	if code, _, _ := c.post("/c/1/lock", url.Values{"year": {"1"}, "until": {"2025-03-31"}}, nil); code != http.StatusSeeOther {
+		t.Fatal("lock failed")
+	}
+	if _, p := c.get("/c/1/vouchers"); strings.Contains(p, `/delete"`) {
+		t.Error("delete offered in a locked period")
+	}
+	if code, b, _ := c.post("/c/1/vouchers/3/delete", url.Values{}, nil); code != 422 || !strings.Contains(b, "låst") {
+		t.Errorf("delete in locked period: %d %s", code, b)
+	}
+	// An empty log reads sensibly.
+	c2 := newClient(t)
+	c2.importSmall()
+	if _, b := c2.get("/c/1/deleted"); !strings.Contains(b, "Inga verifikationer har raderats") {
+		t.Error("empty log page")
 	}
 }

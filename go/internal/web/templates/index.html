@@ -16,8 +16,8 @@
     <label>Organisationsnummer <input name="orgnr" value="{{.Form.OrgNr}}" size="13"></label>
   </p>
   <p>
-    <label>Första räkenskapsår från <input type="date" name="start" value="{{.Form.Start}}" required></label>
-    <label>till <input type="date" name="end" value="{{.Form.End}}" required></label>
+    <label>Första räkenskapsår från <input name="start" value="{{.Form.Start}}" size="10" maxlength="10" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" title="Datum som yyyy-mm-dd" inputmode="numeric" autocomplete="off" required></label>
+    <label>till <input name="end" value="{{.Form.End}}" size="10" maxlength="10" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" title="Datum som yyyy-mm-dd" inputmode="numeric" autocomplete="off" required></label>
   </p>
   <p>
     <label>Kontoplansmall

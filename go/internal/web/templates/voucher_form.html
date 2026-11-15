@@ -3,33 +3,37 @@
 <h1>Ny verifikation</h1>
 {{if .Notice}}<p><strong>{{.Notice}}</strong></p>{{end}}
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-<form method="post" action="/c/{{.P.Company.ID}}/vouchers">
+{{define "voucherrow"}}
+      <tr>
+        <td><input name="acct" value="{{.Account}}" size="8" autocomplete="off"></td>
+        <td class="n"><input name="debit" value="{{.Debit}}" size="12" inputmode="decimal" style="text-align:right"></td>
+        <td class="n"><input name="credit" value="{{.Credit}}" size="12" inputmode="decimal" style="text-align:right"></td>
+        <td><input name="ltext" value="{{.Text}}" size="30"></td>
+      </tr>
+{{end}}
+<form id="voucher-form" method="post" action="/c/{{.P.Company.ID}}/vouchers">
   <p>
     <label>Räkenskapsår
       <select name="year">
         {{range .P.Years}}<option value="{{.ID}}"{{if eq .ID $.YearID}} selected{{end}}>{{.Start}} – {{.End}}{{if .LockedUntil}} (låst t.o.m. {{.LockedUntil}}){{end}}</option>{{end}}
       </select></label>
     <label>Serie <input name="series" value="{{.Series}}" size="4" required></label>
-    <label>Datum <input type="date" name="date" value="{{.Date}}" required></label>
+    <label>Datum <input name="date" value="{{.Date}}" size="10" maxlength="10" placeholder="yyyy-mm-dd" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" title="Datum som yyyy-mm-dd" inputmode="numeric" autocomplete="off" required autofocus></label>
   </p>
   <p><label>Text <input name="text" value="{{.Text}}" size="60" maxlength="200" required></label></p>
   <table>
     <thead><tr><th>Konto</th><th class="n">Debet</th><th class="n">Kredit</th><th>Radtext</th></tr></thead>
-    <tbody>
-    {{range .Rows}}
-      <tr>
-        <td><input name="acct" value="{{.Account}}" list="accounts" size="8" autocomplete="off"></td>
-        <td class="n"><input name="debit" value="{{.Debit}}" size="12" inputmode="decimal" style="text-align:right"></td>
-        <td class="n"><input name="credit" value="{{.Credit}}" size="12" inputmode="decimal" style="text-align:right"></td>
-        <td><input name="ltext" value="{{.Text}}" size="30"></td>
-      </tr>
-    {{end}}
+    <tbody id="rows">
+    {{range .Rows}}{{template "voucherrow" .}}{{end}}
     </tbody>
   </table>
-  <datalist id="accounts">
-    {{range .Accounts}}<option value="{{.Number}}">{{.Name}}</option>{{end}}
-  </datalist>
-  <p><button>Bokför</button></p>
+  <template id="row-template">{{template "voucherrow" .Blank}}</template>
+  <ul id="acct-data" hidden>
+    {{range .Accounts}}<li data-n="{{.Number}}" data-m="{{.Name}}"></li>{{end}}
+  </ul>
+  <p><button>Bokför</button> <span class="muted">Ctrl+Enter bokför. Enter går till nästa fält.</span></p>
 </form>
 <p class="muted">En bokförd verifikation kan inte ändras eller tas bort. Fel rättas med en rättelseverifikation.</p>
+<script src="/static/account-picker.js"></script>
+<script src="/static/voucher-form.js"></script>
 {{template "foot"}}

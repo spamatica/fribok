@@ -23,6 +23,9 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
+//go:embed static
+var staticFS embed.FS
+
 const maxUpload = 32 << 20
 
 type Server struct {
@@ -65,9 +68,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{id}/vouchers/new", s.newVoucherForm)
 	mux.HandleFunc("POST /c/{id}/vouchers", s.createVoucher)
 	mux.HandleFunc("POST /c/{id}/vouchers/{vid}/correct", s.correctVoucher)
+	mux.HandleFunc("POST /c/{id}/vouchers/{vid}/delete", s.deleteVoucher)
+	mux.HandleFunc("GET /c/{id}/deleted", s.deletedVouchers)
 	mux.HandleFunc("POST /c/{id}/lock", s.lockYear)
 	mux.HandleFunc("GET /c/{id}/close", s.closeYear)
 	mux.HandleFunc("POST /c/{id}/close", s.closeYear)
+	mux.Handle("GET /static/", http.FileServerFS(staticFS))
 	return sameOrigin(mux)
 }
 
@@ -174,7 +180,13 @@ func (s *Server) vouchers(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	s.render(w, "vouchers.html", map[string]any{"P": p, "Vouchers": vs, "Path": "vouchers"})
+	deletable, err := s.store.LastDeletableVoucher(r.Context(), p.Company.ID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.render(w, "vouchers.html", map[string]any{"P": p, "Vouchers": vs, "Path": "vouchers",
+		"DeletableID": deletable, "Notice": r.URL.Query().Get("notice")})
 }
 
 func (s *Server) trial(w http.ResponseWriter, r *http.Request) {
