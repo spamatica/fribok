@@ -1,0 +1,10 @@
+{{template "head" .Company.Name}}
+{{template "nav" .}}
+<h1>{{.Company.Name}}</h1>
+<p class="muted">{{.Company.OrgNr}}</p>
+<ul>
+{{range .Years}}<li>{{.Start}} – {{.End}}:
+  <a href="/c/{{$.Company.ID}}/vouchers?year={{.ID}}">verifikationer</a>,
+  <a href="/c/{{$.Company.ID}}/trial?year={{.ID}}">saldobalans</a></li>{{end}}
+</ul>
+{{template "foot"}}

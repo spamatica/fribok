@@ -1,0 +1,17 @@
+{{template "head" "Verifikationer"}}
+{{template "nav" .P}}
+<h1>Verifikationer</h1>
+{{template "yearpicker" .}}
+{{range .Vouchers}}
+<div class="voucher">
+  <strong>{{.Series}}{{.Number}}</strong> {{.Date}} – {{.Text}}
+  <table>
+    {{range .Lines}}
+    <tr><td>{{.Account}}</td><td class="muted">{{.Text}}</td>
+        <td class="n">{{if gt .Amount 0}}{{kr .Amount}}{{end}}</td>
+        <td class="n">{{if lt .Amount 0}}{{kr (neg .Amount)}}{{end}}</td></tr>
+    {{end}}
+  </table>
+</div>
+{{else}}<p class="muted">Inga verifikationer för året.</p>{{end}}
+{{template "foot"}}

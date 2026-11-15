@@ -1,0 +1,43 @@
+{{define "head"}}<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.}} – Fribok</title>
+<style>
+  :root { color-scheme: light dark; --line: #8884; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 62rem; margin: 0 auto; padding: 1rem; }
+  nav a { margin-right: 1rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: .2rem .6rem; border-bottom: 1px solid var(--line); text-align: left; }
+  th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tfoot td { font-weight: 600; }
+  .voucher { margin: 1rem 0; }
+  .error { color: #c00; }
+  .muted { opacity: .65; }
+</style>
+</head>
+<body>
+{{end}}
+
+{{define "foot"}}</body>
+</html>
+{{end}}
+
+{{define "nav"}}
+<nav>
+  <a href="/">Företag</a>
+  <a href="/c/{{.Company.ID}}/">{{.Company.Name}}</a>
+  <a href="/c/{{.Company.ID}}/accounts">Kontoplan</a>
+  <a href="/c/{{.Company.ID}}/vouchers">Verifikationer</a>
+  <a href="/c/{{.Company.ID}}/trial">Saldobalans</a>
+</nav>
+{{end}}
+
+{{define "yearpicker"}}
+{{$p := .P}}
+<p>Räkenskapsår:
+{{range $p.Years}}
+  {{if eq .ID $p.Year.ID}}<strong>{{.Start}} – {{.End}}</strong>{{else}}<a href="/c/{{$p.Company.ID}}/{{$.Path}}?year={{.ID}}">{{.Start}} – {{.End}}</a>{{end}}
+{{end}}</p>
+{{end}}

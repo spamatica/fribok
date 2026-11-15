@@ -1,0 +1,16 @@
+{{template "head" "Företag"}}
+<h1>Fribok</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<h2>Företag och föreningar</h2>
+{{if .Companies}}
+<ul>
+{{range .Companies}}<li><a href="/c/{{.ID}}/">{{.Name}}</a> <span class="muted">{{.OrgNr}}</span></li>{{end}}
+</ul>
+{{else}}<p class="muted">Inget importerat än.</p>{{end}}
+
+<h2>Importera SIE-fil</h2>
+<form method="post" action="/import" enctype="multipart/form-data">
+  <input type="file" name="file" accept=".se,.si,.sie" required>
+  <button>Importera</button>
+</form>
+{{template "foot"}}

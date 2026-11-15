@@ -1,0 +1,14 @@
+{{template "head" "Saldobalans"}}
+{{template "nav" .P}}
+<h1>Saldobalans</h1>
+{{template "yearpicker" .}}
+<table>
+<thead><tr><th>Konto</th><th>Namn</th><th class="n">Ing. balans</th><th class="n">Debet</th><th class="n">Kredit</th><th class="n">Utg. balans</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr><td>{{.Account}}</td><td>{{.Name}}</td>
+  <td class="n">{{kr .Opening}}</td><td class="n">{{kr .Debit}}</td><td class="n">{{kr .Credit}}</td><td class="n">{{kr .Closing}}</td></tr>{{end}}
+</tbody>
+<tfoot><tr><td colspan="2">Summa</td>
+  <td class="n">{{kr .Total.Opening}}</td><td class="n">{{kr .Total.Debit}}</td><td class="n">{{kr .Total.Credit}}</td><td class="n">{{kr .Total.Closing}}</td></tr></tfoot>
+</table>
+{{template "foot"}}

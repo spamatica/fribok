@@ -1,0 +1,10 @@
+{{template "head" "Kontoplan"}}
+{{template "nav" .P}}
+<h1>Kontoplan</h1>
+<table>
+<thead><tr><th>Konto</th><th>Namn</th><th>Typ</th></tr></thead>
+<tbody>
+{{range .Accounts}}<tr><td>{{.Number}}</td><td>{{.Name}}</td><td>{{.Type}}</td></tr>{{end}}
+</tbody>
+</table>
+{{template "foot"}}
