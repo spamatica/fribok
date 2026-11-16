@@ -2,6 +2,7 @@
 {{template "nav" .P}}
 <h1>Saldobalans</h1>
 {{template "yearpicker" .}}
+<p class="pdf"><a href="/c/{{.P.Company.ID}}/trial.pdf?year={{.P.Year.ID}}">Ladda ner PDF</a></p>
 <table>
 <thead><tr><th>Konto</th><th>Namn</th><th class="n">Ing. balans</th><th class="n">Debet</th><th class="n">Kredit</th><th class="n">Utg. balans</th></tr></thead>
 <tbody>

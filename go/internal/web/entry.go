@@ -356,11 +356,7 @@ func (s *Server) deleteVoucher(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
-	}
-	yearID, err := s.store.DeleteLastVoucher(r.Context(), p.Company.ID, vid, r.PostForm.Get("reason"))
+	yearID, err := s.store.DeleteLastVoucher(r.Context(), p.Company.ID, vid)
 	if err != nil {
 		if msg, ok := validationMsg(err); ok {
 			http.Error(w, msg, http.StatusUnprocessableEntity)
@@ -370,18 +366,5 @@ func (s *Server) deleteVoucher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/c/%d/vouchers?year=%d&notice=%s", p.Company.ID, yearID,
-		url.QueryEscape("Verifikationen raderades och finns kvar i loggen över raderade verifikationer.")), http.StatusSeeOther)
-}
-
-func (s *Server) deletedVouchers(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.load(w, r, false)
-	if !ok {
-		return
-	}
-	log, err := s.store.DeletedVouchers(r.Context(), p.Company.ID)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	s.render(w, "deleted.html", map[string]any{"P": p, "Log": log})
+		url.QueryEscape("Verifikationen raderades")), http.StatusSeeOther)
 }

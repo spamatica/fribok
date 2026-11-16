@@ -11,6 +11,7 @@
 {{end}}
 
 {{define "foot"}}</main>
+<script src="/static/nav-shortcuts.js"></script>
 </body>
 </html>
 {{end}}
@@ -20,8 +21,8 @@
 <header class="top">
   <a class="brand" href="/">Fribok</a>
   <nav>
-    <a href="/"{{if active "home"}} aria-current="page"{{end}}>Företag</a>
-    <a href="/templates"{{if active "templates"}} aria-current="page"{{end}}>Kontoplansmallar</a>
+    <a href="/" data-shortcut="f" aria-keyshortcuts="F"{{if active "home"}} aria-current="page"{{end}}>Företag <kbd class="shortcut" aria-hidden="true">F</kbd></a>
+    <a href="/templates" data-shortcut="k" aria-keyshortcuts="K"{{if active "templates"}} aria-current="page"{{end}}>Kontoplansmallar <kbd class="shortcut" aria-hidden="true">K</kbd></a>
   </nav>
 </header>
 <main>
@@ -33,12 +34,12 @@
   <a class="brand" href="/">Fribok</a>
   <a class="company" href="/c/{{.Company.ID}}/"{{if active ""}} aria-current="page"{{end}}>{{.Company.Name}}</a>
   <nav>
-    <a href="/c/{{.Company.ID}}/accounts"{{if active "accounts"}} aria-current="page"{{end}}>Kontoplan</a>
-    <a href="/c/{{.Company.ID}}/vouchers"{{if active "vouchers"}} aria-current="page"{{end}}>Verifikationer</a>
-    <a href="/c/{{.Company.ID}}/ledger"{{if active "ledger"}} aria-current="page"{{end}}>Huvudbok</a>
-    <a href="/c/{{.Company.ID}}/trial"{{if active "trial"}} aria-current="page"{{end}}>Saldobalans</a>
-    <a href="/c/{{.Company.ID}}/income"{{if active "income"}} aria-current="page"{{end}}>Resultaträkning</a>
-    <a href="/c/{{.Company.ID}}/balance"{{if active "balance"}} aria-current="page"{{end}}>Balansräkning</a>
+    <a href="/c/{{.Company.ID}}/accounts" data-shortcut="k" aria-keyshortcuts="K"{{if active "accounts"}} aria-current="page"{{end}}>Kontoplan <kbd class="shortcut" aria-hidden="true">K</kbd></a>
+    <a href="/c/{{.Company.ID}}/vouchers" data-shortcut="v" aria-keyshortcuts="V"{{if active "vouchers"}} aria-current="page"{{end}}>Verifikationer <kbd class="shortcut" aria-hidden="true">V</kbd></a>
+    <a href="/c/{{.Company.ID}}/ledger" data-shortcut="h" aria-keyshortcuts="H"{{if active "ledger"}} aria-current="page"{{end}}>Huvudbok <kbd class="shortcut" aria-hidden="true">H</kbd></a>
+    <a href="/c/{{.Company.ID}}/trial" data-shortcut="s" aria-keyshortcuts="S"{{if active "trial"}} aria-current="page"{{end}}>Saldobalans <kbd class="shortcut" aria-hidden="true">S</kbd></a>
+    <a href="/c/{{.Company.ID}}/income" data-shortcut="r" aria-keyshortcuts="R"{{if active "income"}} aria-current="page"{{end}}>Resultaträkning <kbd class="shortcut" aria-hidden="true">R</kbd></a>
+    <a href="/c/{{.Company.ID}}/balance" data-shortcut="b" aria-keyshortcuts="B"{{if active "balance"}} aria-current="page"{{end}}>Balansräkning <kbd class="shortcut" aria-hidden="true">B</kbd></a>
   </nav>
 </header>
 <main>

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fribok/internal/ledger"
@@ -31,6 +32,9 @@ const maxUpload = 32 << 20
 type Server struct {
 	store *ledger.Store
 	tmpl  *template.Template
+
+	pendingMu      sync.Mutex
+	pendingImports map[string]pendingImport
 }
 
 func New(store *ledger.Store) *Server {
@@ -41,8 +45,9 @@ func New(store *ledger.Store) *Server {
 		"active": func(string) bool { return false },
 	}
 	return &Server{
-		store: store,
-		tmpl:  template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")),
+		store:          store,
+		tmpl:           template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/*.html")),
+		pendingImports: make(map[string]pendingImport),
 	}
 }
 
@@ -50,7 +55,11 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.index)
 	mux.HandleFunc("POST /import", s.importSIE)
+	mux.HandleFunc("POST /import/confirm", s.importConfirm)
 	mux.HandleFunc("GET /c/{id}/{$}", s.company)
+	mux.HandleFunc("GET /c/{id}/delete", s.confirmDeleteCompany)
+	mux.HandleFunc("POST /c/{id}/delete", s.deleteCompany)
+	mux.HandleFunc("POST /c/{id}/import", s.mergeSIE)
 	mux.HandleFunc("POST /companies", s.createCompany)
 	mux.HandleFunc("GET /templates", s.templates)
 	mux.HandleFunc("POST /templates", s.importTemplate)
@@ -66,12 +75,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /c/{id}/ledger", s.generalLedger)
 	mux.HandleFunc("GET /c/{id}/income", s.statement("income", report.IncomeStatement))
 	mux.HandleFunc("GET /c/{id}/balance", s.statement("balance", report.BalanceSheet))
+	mux.HandleFunc("GET /c/{id}/income.pdf", s.statementPDF("income", report.IncomeStatement))
+	mux.HandleFunc("GET /c/{id}/balance.pdf", s.statementPDF("balance", report.BalanceSheet))
+	mux.HandleFunc("GET /c/{id}/trial.pdf", s.trialPDF)
+	mux.HandleFunc("GET /c/{id}/ledger.pdf", s.ledgerPDF)
 	mux.HandleFunc("GET /c/{id}/export.se", s.exportSIE)
 	mux.HandleFunc("GET /c/{id}/vouchers/new", s.newVoucherForm)
 	mux.HandleFunc("POST /c/{id}/vouchers", s.createVoucher)
 	mux.HandleFunc("POST /c/{id}/vouchers/{vid}/correct", s.correctVoucher)
 	mux.HandleFunc("POST /c/{id}/vouchers/{vid}/delete", s.deleteVoucher)
-	mux.HandleFunc("GET /c/{id}/deleted", s.deletedVouchers)
 	mux.HandleFunc("POST /c/{id}/lock", s.lockYear)
 	mux.HandleFunc("GET /c/{id}/close", s.closeYear)
 	mux.HandleFunc("POST /c/{id}/close", s.closeYear)
@@ -107,8 +119,6 @@ func sectionOf(path string) string {
 		switch parts[2] {
 		case "accounts", "vouchers", "ledger", "trial", "income", "balance":
 			return parts[2]
-		case "deleted": // the log of deleted vouchers
-			return "vouchers"
 		}
 		return ""
 	}
@@ -148,6 +158,11 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	s.showIndex(w, r, defaultCompanyForm(), r.URL.Query().Get("error"), http.StatusOK)
 }
 
+type importNamePage struct {
+	Token, Name, Original, Error string
+	Years, Accounts, Vouchers    int
+}
+
 func (s *Server) importSIE(w http.ResponseWriter, r *http.Request) {
 	f, _, err := r.FormFile("file")
 	if err != nil {
@@ -157,6 +172,33 @@ func (s *Server) importSIE(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 	doc, err := sie.Parse(f)
 	if err == nil {
+		doc.CompanyName = strings.TrimSpace(doc.CompanyName)
+		if doc.CompanyName != "" {
+			taken, terr := s.store.CompanyNameTaken(r.Context(), doc.CompanyName)
+			if terr != nil {
+				s.fail(w, terr)
+				return
+			}
+			if taken {
+				// Let the user pick another name instead of throwing the
+				// parsed file away and asking for it again.
+				name, terr := s.store.UniqueCompanyName(r.Context(), doc.CompanyName)
+				if terr != nil {
+					s.fail(w, terr)
+					return
+				}
+				token, terr := s.rememberImport(doc)
+				if terr != nil {
+					s.fail(w, terr)
+					return
+				}
+				s.showImportName(w, r, importNamePage{
+					Token: token, Name: name, Original: doc.CompanyName,
+					Years: len(doc.Years), Accounts: len(doc.Accounts), Vouchers: len(doc.Vouchers),
+				}, http.StatusOK)
+				return
+			}
+		}
 		var id int64
 		if id, err = s.store.ImportSIE(r.Context(), doc); err == nil {
 			http.Redirect(w, r, fmt.Sprintf("/c/%d/", id), http.StatusSeeOther)
@@ -166,12 +208,146 @@ func (s *Server) importSIE(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/?error="+template.URLQueryEscaper("import failed: "+err.Error()), http.StatusSeeOther)
 }
 
+func (s *Server) showImportName(w http.ResponseWriter, r *http.Request, p importNamePage, status int) {
+	w.WriteHeader(status)
+	s.render(w, "import_name.html", p)
+}
+
+func (s *Server) importConfirm(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	token := r.PostForm.Get("token")
+	name := strings.TrimSpace(r.PostForm.Get("name"))
+	doc, ok := s.pendingImport(token)
+	if !ok {
+		http.Redirect(w, r, "/?error="+template.URLQueryEscaper("Importen har gått ut. Ladda upp filen igen."),
+			http.StatusSeeOther)
+		return
+	}
+	page := importNamePage{
+		Token: token, Name: name, Original: doc.CompanyName,
+		Years: len(doc.Years), Accounts: len(doc.Accounts), Vouchers: len(doc.Vouchers),
+	}
+	if name == "" {
+		page.Error = "Företagsnamn saknas"
+		s.showImportName(w, r, page, http.StatusUnprocessableEntity)
+		return
+	}
+	copy := *doc
+	copy.CompanyName = name
+	id, err := s.store.ImportSIE(r.Context(), &copy)
+	if err != nil {
+		if msg, ok := validationMsg(err); ok {
+			page.Error = msg
+			s.showImportName(w, r, page, http.StatusUnprocessableEntity)
+			return
+		}
+		s.fail(w, err)
+		return
+	}
+	s.forgetImport(token)
+	http.Redirect(w, r, fmt.Sprintf("/c/%d/", id), http.StatusSeeOther)
+}
+
+// confirmDeleteCompany asks before the destructive POST.
+func (s *Server) confirmDeleteCompany(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.load(w, r, false)
+	if !ok {
+		return
+	}
+	s.render(w, "company_delete.html", p)
+}
+
+// deleteCompany removes a company and all of its bookkeeping.
+func (s *Server) deleteCompany(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.load(w, r, false)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	if r.PostForm.Get("confirm") != "yes" {
+		http.Error(w, "Bekräfta borttagningen", http.StatusUnprocessableEntity)
+		return
+	}
+	if err := s.store.DeleteCompany(r.Context(), p.Company.ID); err != nil {
+		if msg, ok := validationMsg(err); ok {
+			http.Error(w, msg, http.StatusUnprocessableEntity)
+			return
+		}
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, "/?notice="+template.URLQueryEscaper("Företaget togs bort"), http.StatusSeeOther)
+}
+
+// mergeSIE adds the years of an uploaded SIE file to an existing company.
+func (s *Server) mergeSIE(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	f, _, err := r.FormFile("file")
+	if err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/c/%d/?error=%s", id,
+			template.URLQueryEscaper("ingen fil togs emot")), http.StatusSeeOther)
+		return
+	}
+	defer f.Close()
+	doc, err := sie.Parse(f)
+	if err == nil {
+		var res ledger.MergeResult
+		if res, err = s.store.MergeSIE(r.Context(), id, doc); err == nil {
+			http.Redirect(w, r, fmt.Sprintf("/c/%d/?notice=%s", id,
+				template.URLQueryEscaper(mergeNotice(res))), http.StatusSeeOther)
+			return
+		}
+	}
+	msg, ok := validationMsg(err)
+	if !ok {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/c/%d/?error=%s", id,
+		template.URLQueryEscaper(msg)), http.StatusSeeOther)
+}
+
+func mergeNotice(res ledger.MergeResult) string {
+	list := func(years []ledger.MergeYear) string {
+		parts := make([]string, len(years))
+		for i, y := range years {
+			parts[i] = y.Start + " – " + y.End
+		}
+		return strings.Join(parts, ", ")
+	}
+	var parts []string
+	if len(res.Added) > 0 {
+		parts = append(parts, "Tillagda räkenskapsår: "+list(res.Added))
+	}
+	if len(res.Updated) > 0 {
+		parts = append(parts, "Uppdaterade räkenskapsår: "+list(res.Updated))
+	}
+	if len(res.Skipped) > 0 {
+		parts = append(parts, "Fanns redan: "+list(res.Skipped))
+	}
+	parts = append(parts, fmt.Sprintf("Importerade verifikationer: %d. Nya konton: %d.",
+		res.Vouchers, res.Accounts))
+	return strings.Join(parts, ". ") + "."
+}
+
 // companyCtx loads the company from the path and, when withYear is set, the
 // selected fiscal year (?year=<idx>, default the newest).
 type page struct {
 	Company ledger.Company
 	Years   []ledger.FiscalYear
 	Year    ledger.FiscalYear
+	Notice  string
+	Error   string
 }
 
 func (s *Server) load(w http.ResponseWriter, r *http.Request, withYear bool) (page, bool) {
@@ -182,6 +358,8 @@ func (s *Server) load(w http.ResponseWriter, r *http.Request, withYear bool) (pa
 		return p, false
 	}
 	ctx := r.Context()
+	p.Notice = r.URL.Query().Get("notice")
+	p.Error = r.URL.Query().Get("error")
 	if p.Company, err = s.store.Company(ctx, id); err != nil {
 		s.fail(w, err)
 		return p, false
@@ -231,6 +409,11 @@ func (s *Server) vouchers(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	// The store returns vouchers in series/number order; the page shows the
+	// latest one first.
+	for i, j := 0, len(vs)-1; i < j; i, j = i+1, j-1 {
+		vs[i], vs[j] = vs[j], vs[i]
+	}
 	deletable, err := s.store.LastDeletableVoucher(r.Context(), p.Company.ID)
 	if err != nil {
 		s.fail(w, err)
@@ -245,17 +428,10 @@ func (s *Server) trial(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.store.TrialBalance(r.Context(), p.Company.ID, p.Year.ID)
+	rows, tot, err := s.trialData(r.Context(), p)
 	if err != nil {
 		s.fail(w, err)
 		return
-	}
-	var tot struct{ Opening, Debit, Credit, Closing money.Ore }
-	for _, x := range rows {
-		tot.Opening += x.Opening
-		tot.Debit += x.Debit
-		tot.Credit += x.Credit
-		tot.Closing += x.Closing
 	}
 	s.render(w, "trial.html", map[string]any{"P": p, "Rows": rows, "Total": tot, "Path": "trial"})
 }
@@ -287,27 +463,12 @@ func (s *Server) statement(path string, build func(cur, prev []ledger.TrialRow) 
 		if !ok {
 			return
 		}
-		rows, err := s.store.TrialBalance(r.Context(), p.Company.ID, p.Year.ID)
+		st, prev, err := s.statementData(r.Context(), p, build)
 		if err != nil {
 			s.fail(w, err)
 			return
 		}
-		// The previous year is the next older one in the list (newest first).
-		var prevRows []ledger.TrialRow
-		var prev ledger.FiscalYear
-		for i, y := range p.Years {
-			if y.ID == p.Year.ID && i+1 < len(p.Years) {
-				prev = p.Years[i+1]
-				if prevRows, err = s.store.TrialBalance(r.Context(), p.Company.ID, prev.ID); err != nil {
-					s.fail(w, err)
-					return
-				}
-				if prevRows == nil {
-					prevRows = []ledger.TrialRow{}
-				}
-			}
-		}
-		s.render(w, "statement.html", map[string]any{"P": p, "S": build(rows, prevRows), "Prev": prev, "Path": path})
+		s.render(w, "statement.html", map[string]any{"P": p, "S": st, "Prev": prev, "Path": path})
 	}
 }
 

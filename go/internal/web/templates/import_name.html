@@ -1,0 +1,13 @@
+{{template "head" "Importera SIE-fil"}}
+{{template "nav0" .}}
+<h1>Importera SIE-fil</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<p class="error">Det finns redan ett företag med namnet <strong>{{.Original}}</strong>. Välj ett annat namn för det importerade företaget.</p>
+<p class="muted">Filen innehåller {{.Years}} räkenskapsår, {{.Accounts}} konton och {{.Vouchers}} verifikationer.</p>
+<form method="post" action="/import/confirm">
+  <input type="hidden" name="token" value="{{.Token}}">
+  <p><label>Företagsnamn <input name="name" value="{{.Name}}" size="40" required autofocus></label></p>
+  <p><button class="primary">Importera</button> <a href="/">Avbryt</a></p>
+</form>
+<p class="muted">Ska filen läggas till i ett befintligt företag i stället? Använd "Lägg till räkenskapsår" på företagets sida.</p>
+{{template "foot"}}

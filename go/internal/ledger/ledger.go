@@ -98,6 +98,8 @@ var migrations = []string{
 	    reason     TEXT NOT NULL DEFAULT '',
 	    deleted_at TEXT NOT NULL
 	 );`,
+	// Deleting a voucher is only for undoing a slip; no copy is kept.
+	`DROP TABLE IF EXISTS deleted_voucher;`,
 }
 
 func (s *Store) migrate() error {
@@ -215,6 +217,7 @@ func accountType(a sie.Account) string {
 // ImportSIE stores a parsed SIE document as a new company, atomically.
 // Every voucher must balance and fall within a fiscal year of the file.
 func (s *Store) ImportSIE(ctx context.Context, doc *sie.Document) (int64, error) {
+	doc.CompanyName = strings.TrimSpace(doc.CompanyName)
 	if doc.CompanyName == "" {
 		return 0, fmt.Errorf("SIE file has no #FNAMN company name")
 	}
@@ -226,6 +229,14 @@ func (s *Store) ImportSIE(ctx context.Context, doc *sie.Document) (int64, error)
 		return 0, err
 	}
 	defer tx.Rollback()
+
+	taken, err := companyNameTaken(ctx, tx, doc.CompanyName, 0)
+	if err != nil {
+		return 0, err
+	}
+	if taken {
+		return 0, invalid("Det finns redan ett företag med namnet %q. Välj ett annat namn.", doc.CompanyName)
+	}
 
 	res, err := tx.ExecContext(ctx,
 		`INSERT INTO company (name, org_nr, currency, kp_type) VALUES (?,?,?,?)`,
@@ -393,6 +404,74 @@ func yearFor(years []sie.Year, date string) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// companyNameKey normalises a company name so that differences in case or
+// whitespace do not allow two companies with the same name.
+func companyNameKey(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
+
+// companyNameTaken reports whether another company already uses name.
+func companyNameTaken(ctx context.Context, q dbtx, name string, excludeID int64) (bool, error) {
+	key := companyNameKey(name)
+	rows, err := q.QueryContext(ctx, `SELECT id, name FROM company`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var other string
+		if err := rows.Scan(&id, &other); err != nil {
+			return false, err
+		}
+		if id != excludeID && companyNameKey(other) == key {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+// CompanyNameTaken reports whether a company name is already in use.
+func (s *Store) CompanyNameTaken(ctx context.Context, name string) (bool, error) {
+	return companyNameTaken(ctx, s.db, name, 0)
+}
+
+// UniqueCompanyName returns base, or "base (2)", "base (3)" and so on, until
+// it finds a name no company uses.
+func (s *Store) UniqueCompanyName(ctx context.Context, base string) (string, error) {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		base = "Företag"
+	}
+	for i := 1; i <= 1000; i++ {
+		name := base
+		if i > 1 {
+			name = fmt.Sprintf("%s (%d)", base, i)
+		}
+		taken, err := s.CompanyNameTaken(ctx, name)
+		if err != nil {
+			return "", err
+		}
+		if !taken {
+			return name, nil
+		}
+	}
+	return "", invalid("Kunde inte hitta ett ledigt företagsnamn")
+}
+
+// DeleteCompany removes a company and, through the foreign keys, its fiscal
+// years, accounts and vouchers.
+func (s *Store) DeleteCompany(ctx context.Context, companyID int64) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM company WHERE id=?`, companyID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return invalid("Företaget finns inte")
+	}
+	return nil
 }
 
 func (s *Store) Companies(ctx context.Context) ([]Company, error) {

@@ -1,0 +1,12 @@
+{{template "head" "Ta bort företaget"}}
+{{template "nav" .}}
+<h1>Ta bort företaget</h1>
+<div class="warning">
+  <p><strong>Är du säker på att du vill ta bort {{.Company.Name}}?</strong></p>
+  <p>All bokföring, kontoplan och alla räkenskapsår tas bort. Det går inte att ångra.</p>
+</div>
+<form method="post" action="/c/{{.Company.ID}}/delete">
+  <input type="hidden" name="confirm" value="yes">
+  <p><button class="danger">Ja, ta bort företaget</button> <a href="/c/{{.Company.ID}}/">Avbryt</a></p>
+</form>
+{{template "foot"}}

@@ -2,3 +2,6 @@ target/
 test_files/
 *.db
 *.db-*
+
+# SIE exports uploaded to the project root (real accounting data)
+/*.se

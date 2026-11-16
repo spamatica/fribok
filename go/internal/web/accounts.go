@@ -39,7 +39,8 @@ func (s *Server) showIndex(w http.ResponseWriter, r *http.Request, f companyForm
 		return
 	}
 	w.WriteHeader(status)
-	s.render(w, "index.html", map[string]any{"Companies": cs, "Templates": ts, "Error": errMsg, "Form": f})
+	s.render(w, "index.html", map[string]any{"Companies": cs, "Templates": ts, "Error": errMsg,
+		"Notice": r.URL.Query().Get("notice"), "Form": f})
 }
 
 func defaultCompanyForm() companyForm {

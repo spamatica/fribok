@@ -2,6 +2,7 @@
 {{template "nav" .P}}
 <h1>{{.S.Title}}</h1>
 {{template "yearpicker" .}}
+<p class="pdf"><a href="/c/{{.P.Company.ID}}/{{.Path}}.pdf?year={{.P.Year.ID}}">Ladda ner PDF</a></p>
 <table>
 <thead><tr><th colspan="2"></th><th class="n">{{.P.Year.End}}</th>{{if .S.HasPrev}}<th class="n">{{.Prev.End}}</th>{{end}}</tr></thead>
 {{range .S.Lines}}

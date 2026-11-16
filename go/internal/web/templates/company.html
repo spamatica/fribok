@@ -2,7 +2,10 @@
 {{template "nav" .}}
 <h1>{{.Company.Name}}</h1>
 <p class="muted">{{.Company.OrgNr}}</p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
 <h2>Räkenskapsår</h2>
+<p class="muted">"Avsluta året" används när du ska gå vidare till nästa räkenskapsår. Importerade år är inte automatiskt låsta; vill du bara göra ett äldre år read-only, använd <a href="#lock">Lås period</a> i stället. Det ändrar inte nästa års ingående balanser.</p>
 <table>
 <thead><tr><th>Räkenskapsår</th><th>Status</th><th>Gå till</th></tr></thead>
 <tbody>
@@ -19,7 +22,7 @@
 </tr>{{end}}
 </tbody>
 </table>
-<h2>Lås period</h2>
+<h2 id="lock">Lås period</h2>
 <p class="muted">Inga verifikationer kan bokföras med datum till och med det låsta datumet. En låsning kan flyttas framåt men inte hävas.</p>
 <form method="post" action="/c/{{.Company.ID}}/lock">
   <p>
@@ -28,6 +31,17 @@
     <button>Lås</button>
   </p>
 </form>
+<h2>Lägg till räkenskapsår</h2>
+<p class="muted">Importera en SIE-fil till det här företaget. Nya räkenskapsår läggs till; år som redan har verifikationer lämnas orörda. Om ett år bara har importerade slutsaldon sedan tidigare ersätts de av filens verifikationer.</p>
+<form method="post" action="/c/{{.Company.ID}}/import" enctype="multipart/form-data">
+  <p>
+    <input type="file" name="file" accept=".se,.si,.sie" required>
+    <button>Lägg till</button>
+  </p>
+</form>
 <h2>Export</h2>
 <p><a href="/c/{{.Company.ID}}/export.se">Exportera SIE 4</a> <span class="muted">(alla räkenskapsår, för revisor eller backup)</span></p>
+<h2>Ta bort företaget</h2>
+<p class="muted">All bokföring, kontoplan och alla räkenskapsår tas bort. Det går inte att ångra.</p>
+<p><a class="btn danger" href="/c/{{.Company.ID}}/delete">Ta bort företaget</a></p>
 {{template "foot"}}

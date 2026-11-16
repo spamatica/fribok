@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -264,7 +265,7 @@ func TestSectionOf(t *testing.T) {
 		"/": "home", "/companies": "home", "/import": "home", "/templates": "templates", "/templates/3/delete": "templates",
 		"/c/1/": "", "/c/1": "", "/c/1/close": "", "/c/1/export.se": "", "/c/1/lock": "",
 		"/c/1/accounts": "accounts", "/c/1/accounts/1930": "accounts", "/c/1/vouchers": "vouchers",
-		"/c/1/vouchers/new": "vouchers", "/c/1/vouchers/5/correct": "vouchers", "/c/1/deleted": "vouchers",
+		"/c/1/vouchers/new": "vouchers", "/c/1/vouchers/5/correct": "vouchers",
 		"/c/12/ledger": "ledger", "/c/1/trial": "trial", "/c/1/income": "income", "/c/1/balance": "balance",
 	} {
 		if got := sectionOf(path); got != want {
@@ -285,7 +286,6 @@ func TestTopBarAndStylesheet(t *testing.T) {
 		"/c/1/accounts/1930": `href="/c/1/accounts"`,
 		"/c/1/vouchers":      `href="/c/1/vouchers"`,
 		"/c/1/vouchers/new":  `href="/c/1/vouchers"`,
-		"/c/1/deleted":       `href="/c/1/vouchers"`,
 		"/c/1/ledger":        `href="/c/1/ledger"`,
 		"/c/1/trial":         `href="/c/1/trial"`,
 		"/c/1/income":        `href="/c/1/income"`,
@@ -300,7 +300,8 @@ func TestTopBarAndStylesheet(t *testing.T) {
 		if n := strings.Count(b, `aria-current="page"`); n != 1 {
 			t.Errorf("%s: %d current links, want 1", path, n)
 		}
-		if !strings.Contains(b, "<a "+current+` aria-current="page"`) && !strings.Contains(b, `class="company" `+current+` aria-current="page"`) {
+		re := regexp.MustCompile(`<a [^>]*` + regexp.QuoteMeta(current) + `[^>]*aria-current="page"`)
+		if !re.MatchString(b) {
 			t.Errorf("%s: wrong link marked current, want %s", path, current)
 		}
 		if !strings.Contains(b, `<link rel="stylesheet" href="/static/style.css">`) || !strings.Contains(b, "<main>") || !strings.Contains(b, "</main>") {

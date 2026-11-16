@@ -4,8 +4,7 @@
 {{template "yearpicker" .}}
 {{if .P.Year.LockedUntil}}<p class="muted">Låst till och med {{.P.Year.LockedUntil}}.</p>{{end}}
 {{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
-<p class="noprint"><a href="/c/{{.P.Company.ID}}/vouchers/new?year={{.P.Year.ID}}">Ny verifikation</a>
-   · <a href="/c/{{.P.Company.ID}}/deleted">Raderade verifikationer</a></p>
+<p class="noprint"><a class="btn primary" href="/c/{{.P.Company.ID}}/vouchers/new?year={{.P.Year.ID}}" data-shortcut="n" aria-keyshortcuts="N">Ny verifikation <kbd class="shortcut" aria-hidden="true">N</kbd></a></p>
 {{range .Vouchers}}
 <div class="voucher" id="v{{.ID}}">
   <div class="vhead">
@@ -24,9 +23,8 @@
       </form>
       {{if eq .ID $.DeletableID}}
       <form class="delete" method="post" action="/c/{{$.P.Company.ID}}/vouchers/{{.ID}}/delete">
-        <p class="muted">Senast bokförda verifikationen kan raderas. Den sparas i loggen över raderade verifikationer.</p>
-        <label>Anledning (valfritt) <input name="reason" maxlength="200"></label>
-        <button class="danger" onclick="return confirm('Radera verifikationen? Den sparas i loggen över raderade verifikationer.')">Radera verifikationen</button>
+        <p class="muted">Senast bokförda verifikationen kan raderas. Numret återanvänds av nästa verifikation.</p>
+        <button class="danger" onclick="return confirm('Radera verifikationen?')">Radera verifikationen</button>
       </form>
       {{end}}
     </div>

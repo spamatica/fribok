@@ -76,6 +76,42 @@ header.top nav a {
 }
 header.top nav a:hover { color: var(--fg); background: var(--hover); text-decoration: none; }
 header.top nav a[aria-current="page"] { color: var(--fg); font-weight: 600; border-bottom-color: var(--accent); }
+kbd.shortcut {
+  margin-left: .45em; padding: 0 .3em;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 3px; color: var(--muted);
+  font: inherit; font-size: .72em; font-weight: 500; line-height: 1.45;
+  vertical-align: .1em; white-space: nowrap;
+}
+a[aria-current="page"] kbd.shortcut { color: var(--fg); }
+a.btn.primary kbd.shortcut {
+  color: var(--accent-fg); opacity: .9;
+  border-color: color-mix(in srgb, var(--accent-fg) 55%, transparent);
+}
+
+/* Company picker on the start page -------------------------------------- */
+.company-list {
+  list-style: none; padding: 0; margin: .8rem 0 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: .8rem;
+}
+.company-card {
+  display: flex; flex-direction: column; gap: .15rem;
+  padding: .95rem 1.1rem;
+  border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: var(--radius); background: var(--card); color: var(--fg);
+}
+.company-card:hover {
+  background: var(--hover); border-color: var(--accent); text-decoration: none;
+}
+.company-card-name { font-size: 1.15rem; font-weight: 700; }
+.company-card-org { color: var(--muted); font-size: .85rem; }
+.company-card-open {
+  margin-top: .55rem; color: var(--accent); font-size: .9rem; font-weight: 600;
+}
+.company-card:hover .company-card-open { text-decoration: underline; }
+.add-company { margin-top: 2rem; }
+.add-company > summary { margin-bottom: .6rem; }
 
 /* Messages --------------------------------------------------------------- */
 .error, .notice {
@@ -85,6 +121,19 @@ header.top nav a[aria-current="page"] { color: var(--fg); font-weight: 600; bord
 }
 .notice { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
 .error { color: var(--danger); }
+.info, .warning {
+  margin: .8rem 0; padding: .7rem 1rem;
+  border-left: 4px solid var(--accent); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.warning {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.info p:first-child, .warning p:first-child { margin-top: 0; }
+.info p:last-child, .warning p:last-child { margin-bottom: 0; }
+.pdf { margin: -.2rem 0 .9rem; }
+.pdf a { font-weight: 600; }
 
 /* Forms ------------------------------------------------------------------ */
 form > p, form > .row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem; margin: .7rem 0; }
@@ -97,16 +146,23 @@ input:not([type=checkbox]):not([type=radio]):focus, select:focus { border-color:
 input::placeholder { color: var(--muted); opacity: .8; }
 input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
 
-button, summary.btn {
+button, summary.btn, a.btn {
   font: inherit; line-height: 1.3; cursor: pointer; color: var(--fg);
+  display: inline-block; text-decoration: none;
   padding: .3rem .9rem; border: 1px solid var(--field); border-radius: var(--radius);
   background: var(--card);
 }
-button:hover, summary.btn:hover { background: var(--hover); border-color: var(--muted); }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
-button.primary:hover { background: var(--accent); filter: brightness(1.12); }
-button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
-button.danger:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+button:hover, summary.btn:hover, a.btn:hover {
+  background: var(--hover); border-color: var(--muted); text-decoration: none;
+}
+button.primary, a.btn.primary {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600;
+}
+button.primary:hover, a.btn.primary:hover {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-fg); filter: brightness(1.12);
+}
+button.danger, a.btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+button.danger:hover, a.btn.danger:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
 button:disabled { opacity: .5; cursor: default; }
 input[type=file] { font: inherit; max-width: 100%; }
 input[type=file]::file-selector-button {
@@ -181,6 +237,7 @@ details.correct .panel {
   main { padding: .75rem .6rem 2rem; }
   header.top { padding: .45rem .6rem 0; }
   header.top nav a { padding: .35rem .55rem; }
+  kbd.shortcut { display: none; }
   table { font-size: .92rem; }
   th, td { padding: .25rem .35rem; }
   h1 { font-size: 1.3rem; }
@@ -192,7 +249,7 @@ details.correct .panel {
     color-scheme: light;
     --bg: #fff; --fg: #000; --muted: #444; --line: #bbb; --field: #888; --card: #fff; --hover: #fff;
   }
-  header.top, button, details, form, .noprint, .ac-list, .years a { display: none !important; }
+  header.top, button, details, form, .noprint, .ac-list, .years a, .pdf { display: none !important; }
   .print-only { display: block; font-weight: 600; margin-bottom: .4rem; }
   .years strong { background: none; color: inherit; border: 0; padding: 0; }
   main { max-width: none; padding: 0; }

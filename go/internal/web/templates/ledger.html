@@ -2,6 +2,7 @@
 {{template "nav" .P}}
 <h1>Huvudbok</h1>
 {{template "yearpicker" .}}
+<p class="pdf"><a href="/c/{{.P.Company.ID}}/ledger.pdf?year={{.P.Year.ID}}{{if .From}}&amp;from={{urlquery .From}}{{end}}{{if .To}}&amp;to={{urlquery .To}}{{end}}">Ladda ner PDF</a></p>
 <form method="get" action="/c/{{.P.Company.ID}}/ledger">
   <input type="hidden" name="year" value="{{.P.Year.ID}}">
   <p>

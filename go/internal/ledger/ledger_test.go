@@ -408,3 +408,30 @@ func TestYearWithOnlyImportedBalancesIsReadOnly(t *testing.T) {
 	_, err = s.CloseYear(ctx, cid, prev.ID, "2099", "2098")
 	wantInvalid(t, err, "importerade slutsaldon")
 }
+
+func TestCompanyNamesMustBeUnique(t *testing.T) {
+	ctx := context.Background()
+	s := mustOpen(t)
+	if _, err := s.CreateCompany(ctx, "Förening", "", "2025-01-01", "2025-12-31", 0, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateCompany(ctx, "  förening  ", "", "2026-01-01", "2026-12-31", 0, false); err == nil ||
+		!strings.Contains(err.Error(), "redan ett företag") {
+		t.Fatalf("duplicate create = %v", err)
+	}
+	doc, err := sie.Parse(strings.NewReader(`#FNAMN "Förening"
+#RAR 0 20250101 20251231
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ImportSIE(ctx, doc); err == nil || !strings.Contains(err.Error(), "redan ett företag") {
+		t.Fatalf("duplicate import = %v", err)
+	}
+	if got, err := s.UniqueCompanyName(ctx, "Förening"); err != nil || got != "Förening (2)" {
+		t.Errorf("UniqueCompanyName = %q, %v", got, err)
+	}
+	if taken, err := s.CompanyNameTaken(ctx, "FÖRENING"); err != nil || !taken {
+		t.Errorf("CompanyNameTaken = %v, %v", taken, err)
+	}
+}

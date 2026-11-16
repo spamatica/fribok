@@ -209,6 +209,9 @@ func TestCloseYearFlow(t *testing.T) {
 	if code != 200 || !strings.Contains(page, "bokförs som verifikation i serie BS") || !strings.Contains(page, "2026-01-01") || !strings.Contains(page, `name="confirm"`) {
 		t.Fatalf("preview: %d\n%s", code, page)
 	}
+	if !strings.Contains(page, "Avsluta året används") || !strings.Contains(page, "Det går inte att ångra") {
+		t.Errorf("preview does not explain what closing means:\n%s", page)
+	}
 	if _, b := c.get("/c/1/vouchers"); strings.Contains(b, "BS1") {
 		t.Fatal("preview posted a voucher")
 	}
@@ -387,8 +390,13 @@ func TestDeleteLastVoucherFlow(t *testing.T) {
 	good("första") // V2
 	good("andra")  // V3, posted last
 
-	// Only the last voucher offers deletion.
+	// The list is newest first.
 	_, page := c.get("/c/1/vouchers")
+	v3, v2 := strings.Index(page, "<strong>V3</strong>"), strings.Index(page, "<strong>V2</strong>")
+	if v3 < 0 || v2 < 0 || v3 > v2 {
+		t.Errorf("vouchers are not newest first (V3 at %d, V2 at %d)", v3, v2)
+	}
+	// Only the last voucher offers deletion.
 	if n := strings.Count(page, `/delete"`); n != 1 || !strings.Contains(page, `/c/1/vouchers/3/delete"`) || !strings.Contains(page, "Radera verifikationen") {
 		t.Errorf("delete forms on the page: %d\n", n)
 	}
@@ -404,20 +412,13 @@ func TestDeleteLastVoucherFlow(t *testing.T) {
 		t.Fatal("voucher vanished after refused deletes")
 	}
 
-	code, _, h := c.post("/c/1/vouchers/3/delete", url.Values{"reason": {"fel konto"}}, nil)
+	code, _, h := c.post("/c/1/vouchers/3/delete", url.Values{}, nil)
 	if code != http.StatusSeeOther || !strings.HasPrefix(h.Get("Location"), "/c/1/vouchers?year=1&notice=") {
 		t.Fatalf("delete: %d %q", code, h.Get("Location"))
 	}
 	_, page = c.get(h.Get("Location"))
 	if !strings.Contains(page, "Verifikationen raderades") || strings.Contains(page, "andra") || !strings.Contains(page, `/c/1/vouchers/2/delete"`) {
 		t.Errorf("page after delete:\n%s", page)
-	}
-	// The log has it, with reason and lines.
-	_, logPage := c.get("/c/1/deleted")
-	for _, want := range []string{"V3", "andra", "fel konto", "6570", "10,00"} {
-		if !strings.Contains(logPage, want) {
-			t.Errorf("log lacks %q:\n%s", want, logPage)
-		}
 	}
 	// The number is reused.
 	good("tredje")
@@ -435,10 +436,65 @@ func TestDeleteLastVoucherFlow(t *testing.T) {
 	if code, b, _ := c.post("/c/1/vouchers/3/delete", url.Values{}, nil); code != 422 || !strings.Contains(b, "låst") {
 		t.Errorf("delete in locked period: %d %s", code, b)
 	}
-	// An empty log reads sensibly.
-	c2 := newClient(t)
-	c2.importSmall()
-	if _, b := c2.get("/c/1/deleted"); !strings.Contains(b, "Inga verifikationer har raderats") {
-		t.Error("empty log page")
+	// There is no deleted-voucher page any more.
+	if code, _ := c.get("/c/1/deleted"); code != http.StatusNotFound {
+		t.Errorf("deleted-voucher page still exists: %d", code)
+	}
+}
+
+func TestVouchersPageHasNoDeletedLink(t *testing.T) {
+	c := newClient(t)
+	c.importSmall()
+	code, body := c.get("/c/1/vouchers")
+	if code != http.StatusOK {
+		t.Fatalf("vouchers page: %d", code)
+	}
+	if strings.Contains(body, "Raderade verifikationer") || strings.Contains(body, `href="/c/1/deleted"`) {
+		t.Errorf("vouchers page still links to the deleted-voucher log:\n%s", body)
+	}
+	if !strings.Contains(body, `class="btn primary"`) || !strings.Contains(body, `>Ny verifikation <kbd class="shortcut"`) {
+		t.Errorf("Ny verifikation is not a primary button:\n%s", body)
+	}
+	if code, _ := c.get("/c/1/deleted"); code != http.StatusNotFound {
+		t.Errorf("deleted-voucher page still exists: %d", code)
+	}
+}
+
+func TestStartPageHighlightsCompanies(t *testing.T) {
+	c := newClient(t)
+	_, before := c.get("/")
+	if !strings.Contains(before, "Inget importerat") || !strings.Contains(before, `action="/companies"`) {
+		t.Fatalf("empty start page:\n%s", before)
+	}
+	if strings.Contains(before, `class="company-card"`) || strings.Contains(before, `class="add-company"`) {
+		t.Error("empty start page shows the company picker")
+	}
+
+	c.importSmall()
+	_, after := c.get("/")
+	for _, want := range []string{
+		`class="company-list"`,
+		`class="company-card"`,
+		">Förening<",
+		"Öppna →",
+		`<details class="add-company">`,
+		`<summary class="btn">Lägg till företag</summary>`,
+		`action="/companies"`,
+	} {
+		if !strings.Contains(after, want) {
+			t.Errorf("start page lacks %q:\n%s", want, after)
+		}
+	}
+	if strings.Index(after, "Dina företag") > strings.Index(after, `class="add-company"`) {
+		t.Error("the add-company form is above the company list")
+	}
+
+	// A failed create opens the collapsed form again, with the typed values.
+	code, body, _ := c.post("/companies", url.Values{
+		"name": {"Ny"}, "start": {"2026-12-31"}, "end": {"2026-01-01"}, "template": {"1"},
+	}, nil)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(body, `<details class="add-company" open>`) ||
+		!strings.Contains(body, `value="Ny"`) {
+		t.Errorf("failed create did not open the form: %d", code)
 	}
 }

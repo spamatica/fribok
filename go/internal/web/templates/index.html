@@ -2,12 +2,32 @@
 {{template "nav0" .}}
 <h1>Företag och föreningar</h1>
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
 {{if .Companies}}
-<ul>
-{{range .Companies}}<li><a href="/c/{{.ID}}/">{{.Name}}</a> <span class="muted">{{.OrgNr}}</span></li>{{end}}
-</ul>
-{{else}}<p class="muted">Inget importerat än.</p>{{end}}
+<section class="companies">
+  <h2>Dina företag</h2>
+  <p class="muted">Välj ett företag att fortsätta med.</p>
+  <ul class="company-list">
+  {{range .Companies}}
+    <li><a class="company-card" href="/c/{{.ID}}/">
+      <span class="company-card-name">{{.Name}}</span>
+      {{if .OrgNr}}<span class="company-card-org">{{.OrgNr}}</span>{{end}}
+      <span class="company-card-open">Öppna →</span>
+    </a></li>
+  {{end}}
+  </ul>
+</section>
+<details class="add-company"{{if .Error}} open{{end}}>
+  <summary class="btn">Lägg till företag</summary>
+  {{template "companyforms" .}}
+</details>
+{{else}}
+<p class="muted">Inget importerat än. Skapa ett nytt företag eller importera en SIE-fil nedan.</p>
+{{template "companyforms" .}}
+{{end}}
+{{template "foot"}}
 
+{{define "companyforms"}}
 <h2>Nytt företag</h2>
 <form method="post" action="/companies">
   <p>
@@ -41,4 +61,4 @@
     <button>Importera</button>
   </p>
 </form>
-{{template "foot"}}
+{{end}}

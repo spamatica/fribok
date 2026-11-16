@@ -27,14 +27,12 @@ func TestDeleteLastVoucher(t *testing.T) {
 		t.Errorf("deletable = %d, want %d", id, b.ID)
 	}
 	// Only the last one.
-	_, err := s.DeleteLastVoucher(ctx, cid, a.ID, "")
+	_, err := s.DeleteLastVoucher(ctx, cid, a.ID)
 	wantInvalid(t, err, "Bara den senast bokförda")
-	_, err = s.DeleteLastVoucher(ctx, cid, b.ID+99, "")
+	_, err = s.DeleteLastVoucher(ctx, cid, b.ID+99)
 	wantInvalid(t, err, "Bara den senast bokförda")
-	_, err = s.DeleteLastVoucher(ctx, cid, b.ID, strings.Repeat("x", 201))
-	wantInvalid(t, err, "för lång")
 
-	yearID, err := s.DeleteLastVoucher(ctx, cid, b.ID, " fel belopp ")
+	yearID, err := s.DeleteLastVoucher(ctx, cid, b.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +43,11 @@ func TestDeleteLastVoucher(t *testing.T) {
 	vs, _ := s.Vouchers(ctx, cur.ID)
 	if len(vs) != 2 || vs[1].ID != a.ID {
 		t.Errorf("vouchers after delete: %+v", vs)
+	}
+	for _, v := range vs {
+		if v.ID == b.ID {
+			t.Errorf("deleted voucher %d is still present", b.ID)
+		}
 	}
 	rows, _ := s.TrialBalance(ctx, cid, cur.ID)
 	for _, r := range rows {
@@ -61,18 +64,6 @@ func TestDeleteLastVoucher(t *testing.T) {
 	if c.Number != b.Number {
 		t.Errorf("new voucher number %d, want the freed %d", c.Number, b.Number)
 	}
-
-	// The log keeps everything.
-	log, err := s.DeletedVouchers(ctx, cid)
-	if err != nil || len(log) != 1 {
-		t.Fatalf("log = %+v, %v", log, err)
-	}
-	d := log[0]
-	if d.Series != "V" || d.Number != b.Number || d.Date != "2025-02-02" || d.Text != "andra" || d.Reason != "fel belopp" ||
-		len(d.Lines) != 2 || d.Lines[0].Account != "6570" || d.Lines[0].Amount != 700 || d.Lines[1].Account != "1930" || d.Lines[1].Amount != -700 ||
-		!strings.HasSuffix(d.DeletedAt, "Z") {
-		t.Errorf("logged voucher = %+v", d)
-	}
 }
 
 func TestDeleteRefusedInLockedPeriodAndWhenNothingToDelete(t *testing.T) {
@@ -86,11 +77,8 @@ func TestDeleteRefusedInLockedPeriodAndWhenNothingToDelete(t *testing.T) {
 	if id, _ := s.LastDeletableVoucher(ctx, cid); id != 0 {
 		t.Errorf("a voucher in a locked period is deletable: %d", id)
 	}
-	_, err := s.DeleteLastVoucher(ctx, cid, vs[0].ID, "")
+	_, err := s.DeleteLastVoucher(ctx, cid, vs[0].ID)
 	wantInvalid(t, err, "låst")
-	if log, _ := s.DeletedVouchers(ctx, cid); len(log) != 0 {
-		t.Error("a refused delete was logged")
-	}
 	if v, _ := s.Vouchers(ctx, cur.ID); len(v) != 1 {
 		t.Error("a refused delete removed the voucher")
 	}
@@ -103,10 +91,10 @@ func TestDeleteRefusedInLockedPeriodAndWhenNothingToDelete(t *testing.T) {
 	if id, _ := s.LastDeletableVoucher(ctx, empty); id != 0 {
 		t.Errorf("deletable in an empty company: %d", id)
 	}
-	_, err = s.DeleteLastVoucher(ctx, empty, 1, "")
+	_, err = s.DeleteLastVoucher(ctx, empty, 1)
 	wantInvalid(t, err, "ingen verifikation")
 	// The vouchers of another company are out of reach.
-	_, err = s.DeleteLastVoucher(ctx, empty, vs[0].ID, "")
+	_, err = s.DeleteLastVoucher(ctx, empty, vs[0].ID)
 	wantInvalid(t, err, "ingen verifikation")
 }
 
@@ -118,9 +106,9 @@ func TestLastMeansLastPostedNotHighestNumber(t *testing.T) {
 	if id, _ := s.LastDeletableVoucher(ctx, cid); id != b.ID {
 		t.Errorf("deletable = %d, want the one posted last (%d)", id, b.ID)
 	}
-	_, err := s.DeleteLastVoucher(ctx, cid, a.ID, "")
+	_, err := s.DeleteLastVoucher(ctx, cid, a.ID)
 	wantInvalid(t, err, "Bara den senast")
-	if _, err := s.DeleteLastVoucher(ctx, cid, b.ID, ""); err != nil {
+	if _, err := s.DeleteLastVoucher(ctx, cid, b.ID); err != nil {
 		t.Fatal(err)
 	}
 	if id, _ := s.LastDeletableVoucher(ctx, cid); id != a.ID {
@@ -139,7 +127,7 @@ func TestDeletingACorrectionRestoresTheOriginal(t *testing.T) {
 	if id, _ := s.LastDeletableVoucher(ctx, cid); id != corr.ID {
 		t.Fatalf("deletable = %d, want the correction %d", id, corr.ID)
 	}
-	if _, err := s.DeleteLastVoucher(ctx, cid, corr.ID, "ångrade rättelsen"); err != nil {
+	if _, err := s.DeleteLastVoucher(ctx, cid, corr.ID); err != nil {
 		t.Fatal(err)
 	}
 	vs, _ := s.Vouchers(ctx, cur.ID)
@@ -152,41 +140,39 @@ func TestDeletingACorrectionRestoresTheOriginal(t *testing.T) {
 	if _, err := s.CorrectVoucher(ctx, cid, orig.ID, "2025-02-03", "igen"); err != nil {
 		t.Errorf("correcting again: %v", err)
 	}
-	log, _ := s.DeletedVouchers(ctx, cid)
-	if len(log) != 1 || log[0].Corrects != "V2" || !strings.HasPrefix(log[0].Text, "Rättelse av V2") {
-		t.Errorf("log = %+v", log)
-	}
 }
 
-func TestDeletedLogSurvivesAcrossCompaniesAndOrder(t *testing.T) {
+func TestDeleteCompanyRemovesItsBooks(t *testing.T) {
 	ctx := context.Background()
 	s, cid, cur, _ := setup(t)
-	other, err := s.CreateCompany(ctx, "Annan", "", "2026-01-01", "2026-12-31", 0, false)
-	if err != nil {
+	if err := s.DeleteCompany(ctx, 999999); err == nil || !strings.Contains(err.Error(), "finns inte") {
+		t.Errorf("delete unknown = %v", err)
+	}
+	if err := s.DeleteCompany(ctx, cid); err != nil {
 		t.Fatal(err)
 	}
-	post(t, s, cid, cur.ID, "V", "2025-02-01", "ett", 100)
-	if _, err := s.DeleteLastVoucher(ctx, cid, mustLast(t, s, cid), "först"); err != nil {
-		t.Fatal(err)
+	cs, _ := s.Companies(ctx)
+	if len(cs) != 0 {
+		t.Errorf("companies after delete = %+v", cs)
 	}
-	post(t, s, cid, cur.ID, "V", "2025-02-02", "två", 100)
-	if _, err := s.DeleteLastVoucher(ctx, cid, mustLast(t, s, cid), "sist"); err != nil {
-		t.Fatal(err)
+	checks := []struct {
+		query string
+		args  []any
+	}{
+		{`SELECT COUNT(*) FROM company WHERE id=?`, []any{cid}},
+		{`SELECT COUNT(*) FROM fiscal_year WHERE company_id=?`, []any{cid}},
+		{`SELECT COUNT(*) FROM account WHERE company_id=?`, []any{cid}},
+		{`SELECT COUNT(*) FROM voucher WHERE company_id=?`, []any{cid}},
+		{`SELECT COUNT(*) FROM opening_balance WHERE fiscal_year_id=?`, []any{cur.ID}},
+		{`SELECT COUNT(*) FROM year_summary WHERE fiscal_year_id=?`, []any{cur.ID}},
 	}
-	log, _ := s.DeletedVouchers(ctx, cid)
-	if len(log) != 2 || log[0].Reason != "sist" || log[1].Reason != "först" {
-		t.Errorf("log order = %+v", log)
+	for _, c := range checks {
+		var n int
+		if err := s.db.QueryRow(c.query, c.args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Errorf("%s returned %d rows for the deleted company", c.query, n)
+		}
 	}
-	if log, _ := s.DeletedVouchers(ctx, other); len(log) != 0 {
-		t.Errorf("another company sees %d entries", len(log))
-	}
-}
-
-func mustLast(t *testing.T, s *Store, cid int64) int64 {
-	t.Helper()
-	id, err := s.LastDeletableVoucher(context.Background(), cid)
-	if err != nil || id == 0 {
-		t.Fatalf("no deletable voucher: %d %v", id, err)
-	}
-	return id
 }

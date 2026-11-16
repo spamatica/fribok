@@ -61,6 +61,13 @@ func (s *Store) CreateCompany(ctx context.Context, name, orgNr, start, end strin
 		return 0, err
 	}
 	defer tx.Rollback()
+	taken, err := companyNameTaken(ctx, tx, name, 0)
+	if err != nil {
+		return 0, err
+	}
+	if taken {
+		return 0, invalid("Det finns redan ett företag med namnet %q. Välj ett annat namn.", name)
+	}
 	kpType := ""
 	var tpl any
 	if templateID != 0 {

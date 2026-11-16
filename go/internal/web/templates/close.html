@@ -1,6 +1,10 @@
 {{template "head" "Avsluta räkenskapsår"}}
 {{template "nav" .P}}
 <h1>Avsluta räkenskapsår</h1>
+<div class="info">
+  <p><strong>Avsluta året används när du går vidare till nästa räkenskapsår.</strong> Det bokför årets resultat om det inte redan är bokfört, skapar eller återanvänder nästa år, skriver nästa års ingående balanser och låser året.</p>
+  <p class="muted">Det går inte att ångra. Importerade år är inte automatiskt låsta: vill du bara hindra ändringar i ett äldre år, använd <a href="/c/{{.P.Company.ID}}/#lock">Lås period</a> i stället. Det ändrar inte nästa års ingående balanser.</p>
+</div>
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
 <form method="get" action="/c/{{.P.Company.ID}}/close">
   <input type="hidden" name="year" value="{{.YearID}}">
@@ -11,7 +15,13 @@
   </p>
 </form>
 {{if .Planned}}
-<h2>{{.Plan.Year.Start}} – {{.Plan.Year.End}}</h2>
+<h2>Förhandsgranskning: {{.Plan.Year.Start}} – {{.Plan.Year.End}}</h2>
+{{if .Plan.NextExists}}
+<div class="warning">
+  <p><strong>Nästa räkenskapsår finns redan.</strong> Avslutet ersätter dess ingående balanser med balanserna längst ned på sidan. Om nästa år redan är importerat eller påbörjat ändras dess siffror.</p>
+  {{if not .Plan.Result}}<p>Årets resultat är redan bokfört. Behöver du bara göra året read-only? Använd <a href="/c/{{.P.Company.ID}}/#lock">Lås period</a> i stället för att avsluta året.</p>{{end}}
+</div>
+{{end}}
 <ul>
   {{if .Plan.Result}}<li>Årets resultat <strong>{{kr .Plan.Result}}</strong> bokförs som verifikation i serie BS den {{.Plan.Year.End}}: 8999 mot {{.Plan.ResultAccount}}.</li>
   {{else}}<li>Årets resultat är redan bokfört, ingen resultatverifikation behövs.</li>{{end}}
